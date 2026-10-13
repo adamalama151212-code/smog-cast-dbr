@@ -1,16 +1,18 @@
 # =============================================================================
-# PROD environment — paid workspace; deployed ONLY by CI (no manual changes).
+# PROD environment — the course's shared workspace; deployed by CI from a release tag.
 # =============================================================================
 storage:
   mode: catalog
-  catalog: smogcast_prod
-  landing_root: /Volumes/smogcast_prod/raw/landing
-  # Files polled from the GIOŚ API (gios_registry/, gios_live/): written by the Azure Function (functions/gios_poller)
-  # to its blob container, exposed as the EXTERNAL volume raw.landing_live (Terraform module live_ingest).
-  live_landing_root: /Volumes/smogcast_prod/raw/landing_live
-  checkpoint_root: /Volumes/smogcast_prod/raw/checkpoints
+  # One catalog shared by every project of the course (no right to create our own): our schemas carry a prefix —
+  # dbr_dev.smogcast_bronze, …_silver, …_gold, …_ops, …_gold_secure, …_raw. The bundle creates them (databricks.yml).
+  catalog: dbr_dev
+  schema_prefix: smogcast_
+  landing_root: /Volumes/dbr_dev/smogcast_raw/landing
+  # No live_landing_root: there is no Azure Function on the course account, so the live Job polls the GIOŚ API itself
+  # (steps `ingest gios-registry` and `ingest gios-live`) and the poll files share the landing volume.
+  checkpoint_root: /Volumes/dbr_dev/smogcast_raw/checkpoints
   # Saved Spark ML models (MLflow registry is an optional upgrade in stage E9).
-  models_root: /Volumes/smogcast_prod/raw/models
+  models_root: /Volumes/dbr_dev/smogcast_raw/models
   # The stream tables (bronze.pm_stream, silver.pm_stream, ops.pm_late_rejected, ops.pm_stream_quarantine) belong to
   # the declarative pipeline smogcast-stream: no step may edit them; resets = remove landing files + FULL refresh
   # of the pipeline (Job smogcast-fault-demo). Locally (no such key) the step `silver-clean pm-stream` owns them.
@@ -29,6 +31,8 @@ sources:
 
 governance:
   # First rows of ops.access_policy (gold/governance.py) — inserted only when the principal has no row yet.
-  seed_access: []   # TODO: the author's course account as admin, once PROD exists
-  # Who may edit ops.access_policy. No account groups on the course's PROD, so a user goes here.
-  access_editors: []   # TODO: the author's course account, once PROD exists
+  # No account groups on the course's PROD: roles come from this table only.
+  seed_access:
+    - {principal: adamalama151212@softserve.academy, role: admin, note: author}
+  # Who may edit ops.access_policy (a user here, there is no group to name).
+  access_editors: [adamalama151212@softserve.academy]

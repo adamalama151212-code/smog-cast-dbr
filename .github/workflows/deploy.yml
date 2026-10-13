@@ -9,12 +9,15 @@
 # PROD takes only release tags (v*), never a branch, so it always runs a version that was on DEV first.
 # Tests are not re-run here – ci.yml runs them on every pull request.
 #
-# Identity: the Jobs' service principal (Terraform module `identity`), logged in through OIDC – GitHub's token for
-# this job is exchanged for an Entra ID token, so there is no password or client secret anywhere.
-# Settings come from the GitHub Environment (dev / prod → Variables); they are ids, not secrets:
-#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID   – `terraform output` (identity) and the subscription
-#   FUNCTION_RESOURCE_GROUP, FUNCTION_APP_NAME                  – optional: without them the function is skipped
-# How CI logs in on the course's PROD is still open.
+# Identity, by what the GitHub Environment holds:
+#   DEV  – the Jobs' service principal (Terraform module `identity`), logged in through OIDC: GitHub's token for this
+#          job is exchanged for an Entra ID token, so there is no password or client secret anywhere. Variables of
+#          the Environment (ids, not secrets):
+#            AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID   – `terraform output` (identity), the subscription
+#            FUNCTION_RESOURCE_GROUP, FUNCTION_APP_NAME                  – optional: without them the function is skipped
+#   PROD – the course's shared account gives us no service principal, so the Environment has no AZURE_* variables and
+#          holds one secret instead: DATABRICKS_TOKEN, a personal access token of the account that owns the Jobs
+#          there. No Azure login and no function on PROD (the live Job polls the GIOŚ API itself).
 # =============================================================================
 name: deploy
 
@@ -85,6 +88,7 @@ jobs:
       - uses: databricks/setup-cli@v1.19.0
 
       - name: Log in to Azure (OIDC, no secret)
+        if: vars.AZURE_CLIENT_ID != ''
         uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
@@ -93,11 +97,24 @@ jobs:
 
       # One Entra ID token for Databricks, taken right after the login: GitHub's OIDC token expires within minutes,
       # this one lasts about an hour – longer than the deploy. 2ff814a6-… = the AzureDatabricks application.
-      - name: Databricks token
+      - name: Databricks token (from the Azure login)
+        if: vars.AZURE_CLIENT_ID != ''
         run: |
           token=$(az account get-access-token --resource 2ff814a6-3304-4ab8-85cb-cd0e6f879c1d --query accessToken -o tsv)
           echo "::add-mask::${token}"
           echo "DATABRICKS_TOKEN=${token}" >> "$GITHUB_ENV"
+
+      # An Environment without an Azure identity (the course's PROD) holds a Databricks token as a secret instead.
+      - name: Databricks token (secret of the Environment)
+        if: vars.AZURE_CLIENT_ID == ''
+        env:
+          TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::The Environment has neither the AZURE_* variables nor the secret DATABRICKS_TOKEN"
+            exit 1
+          fi
+          echo "DATABRICKS_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
 
       - name: Bundle validate
         run: databricks bundle validate -t "$TARGET"

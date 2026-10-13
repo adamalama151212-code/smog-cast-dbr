@@ -40,6 +40,9 @@ class Storage:
             self._models_root = self.root / "models"
         elif self.mode == "catalog":
             self.catalog = st["catalog"]
+            # A shared catalog (the course's PROD) holds every project's schemas side by side; the prefix keeps ours
+            # apart: <catalog>.<prefix><layer>.<table>. Empty where the catalog is ours alone (DEV).
+            self.schema_prefix = st.get("schema_prefix", "")
             self._landing_root = Path(st["landing_root"])
             self._checkpoint_root = Path(st["checkpoint_root"])
             self._models_root = Path(st["models_root"])
@@ -76,8 +79,12 @@ class Storage:
     def table_path(self, layer: str, name: str) -> str:
         return str(self.root / "delta" / layer / name)
 
+    def schema_name(self, schema: str) -> str:
+        """``<catalog>.<schema>`` in Unity Catalog, with the environment's schema prefix."""
+        return f"{self.catalog}.{self.schema_prefix}{schema}"
+
     def table_name(self, layer: str, name: str) -> str:
-        return f"{self.catalog}.{layer}.{name}"
+        return f"{self.schema_name(layer)}.{name}"
 
     def sql_ref(self, layer: str, name: str) -> str:
         """Table reference for SQL text.
@@ -132,7 +139,7 @@ class Storage:
     def _ensure_schema(self, layer: str) -> None:
         # In PROD schemas are created by bootstrap/governance; this is only a safety
         # net for DEV, where a developer may start from an empty catalog.
-        self.spark.sql(f"CREATE SCHEMA IF NOT EXISTS {self.catalog}.{layer}")
+        self.spark.sql(f"CREATE SCHEMA IF NOT EXISTS {self.schema_name(layer)}")
 
     def overwrite(
         self,

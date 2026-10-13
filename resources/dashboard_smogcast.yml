@@ -9,5 +9,5 @@ resources:
       file_path: ../dashboards/smogcast.lvdash.json
       warehouse_id: ${var.warehouse_id}
       dataset_catalog: ${var.catalog}
-      dataset_schema: gold_secure
+      dataset_schema: ${var.schema_prefix}gold_secure
       embed_credentials: false

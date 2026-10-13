@@ -15,9 +15,9 @@ resources:
     smogcast_stream:
       name: smogcast-stream-${var.env}
       # Default catalog/schema of the pipeline; the tables themselves are named in full
-      # (<catalog>.bronze|silver|ops.<table>, from conf/<env>.yaml), one pipeline publishing to several schemas.
+      # (<catalog>.<prefix>bronze|silver|ops.<table>, from conf/<env>.yaml), one pipeline publishing to several schemas.
       catalog: ${var.catalog}
-      schema: silver
+      schema: ${var.schema_prefix}silver
       # Serverless: the bundle installs our wheels through `environment` (below). On a workspace without
       # serverless pipelines, a target overrides this with `serverless: false` + `clusters` (see databricks.yml).
       serverless: true
