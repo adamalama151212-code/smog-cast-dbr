@@ -39,7 +39,12 @@ def test_bundle_catalog_matches_the_environment_config():
     bundle = yaml.safe_load((Path(__file__).resolve().parents[3] / "databricks.yml").read_text(encoding="utf-8"))
     for target in bundle["targets"].values():
         v = target["variables"]
-        assert v["catalog"] == load_config(v["env"])["storage"]["catalog"], v
+        storage = load_config(v["env"])["storage"]
+        assert v["catalog"] == storage["catalog"], v
+        # the pipeline's default schema and the dashboard's views are named by the bundle, the tables by the config
+        assert v.get("schema_prefix", "") == storage.get("schema_prefix", ""), v
+        raw = f"/Volumes/{v['catalog']}/{v.get('schema_prefix', '')}raw/"
+        assert all(path.startswith(raw) for key, path in storage.items() if key.endswith("_root")), storage
 
 
 def test_dev_names_the_owner_of_every_job_and_pipeline():

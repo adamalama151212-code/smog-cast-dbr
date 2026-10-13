@@ -11,7 +11,8 @@ def test_environments_share_domain_but_differ_in_storage():
         assert local[key] == dev[key] == prod[key]
     assert local["storage"]["mode"] == "path"
     assert dev["storage"]["catalog"] == "smogcast_dev"
-    assert prod["storage"]["catalog"] == "smogcast_prod"
+    # PROD shares the course's catalog with other projects: its schemas carry a prefix instead
+    assert (prod["storage"]["catalog"], prod["storage"]["schema_prefix"]) == ("dbr_dev", "smogcast_")
 
 
 def test_deep_merge_overrides_single_key_only():

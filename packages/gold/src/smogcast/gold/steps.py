@@ -84,7 +84,7 @@ def _gold_tables(ctx: Context) -> list[str]:
     if st.mode == "path":
         root = Path(st.table_path("gold", "_")).parent
         return sorted(p.name for p in root.iterdir() if p.is_dir()) if root.exists() else []
-    return sorted(r["tableName"] for r in ctx.spark.sql(f"SHOW TABLES IN {st.catalog}.gold").collect())
+    return sorted(r["tableName"] for r in ctx.spark.sql(f"SHOW TABLES IN {st.schema_name('gold')}").collect())
 
 
 def step_governance(ctx: Context) -> None:
@@ -118,7 +118,7 @@ def step_governance(ctx: Context) -> None:
     access = st.table_name("ops", g["access_table"])
     for stmt in governance.access_table_statements(access, g.get("seed_access", []), g.get("access_editors", [])):
         spark.sql(stmt)
-    secure = f"{st.catalog}.{g['secure_schema']}"
+    secure = st.schema_name(g["secure_schema"])
     if not spark.catalog.databaseExists(secure):
         # The schema and its grants come from Terraform (module unity_catalog / governance) — never created here.
         log.warning("governance: schema %s missing — secure views skipped (terraform apply first)", secure)

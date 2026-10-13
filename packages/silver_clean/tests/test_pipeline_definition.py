@@ -11,6 +11,7 @@ import types
 from pathlib import Path
 
 import pyspark
+import pytest
 
 from smogcast.core.config import load_config
 from smogcast.silver_clean import pm_stream as ps
@@ -56,28 +57,30 @@ class Recorder(types.ModuleType):
         raise AttributeError(attr)
 
 
-def test_pipeline_declares_the_stream_graph_with_the_wheels_rules(spark, monkeypatch):
+@pytest.mark.parametrize("env", ["dev", "prod"])   # prod: prefixed schemas in a shared catalog
+def test_pipeline_declares_the_stream_graph_with_the_wheels_rules(spark, monkeypatch, env):
     dp = Recorder()
     monkeypatch.setitem(sys.modules, "pyspark.pipelines", dp)
     monkeypatch.setattr(pyspark, "pipelines", dp, raising=False)
     monkeypatch.setattr(os, "makedirs", lambda *a, **k: None)   # /Volumes does not exist here
-    spark.conf.set("smogcast.env", "dev")
+    spark.conf.set("smogcast.env", env)
     try:
         exec(compile(PIPELINE.read_text(encoding="utf-8"), str(PIPELINE), "exec"), {"__name__": "stream"})
     finally:
         spark.conf.unset("smogcast.env")
 
-    cat = load_config("dev")["storage"]["catalog"]
-    dq = load_config("dev")["pm_dq"]
+    storage = load_config(env)["storage"]
+    cat = f"{storage['catalog']}.{storage.get('schema_prefix', '')}"   # e.g. "smogcast_dev." or "dbr_dev.smogcast_"
+    dq = load_config(env)["pm_dq"]
     d = dp.datasets
-    assert d[f"{cat}.bronze.pm_stream"]["kind"] == "streaming_table"
-    assert d[f"{cat}.bronze.pm_stream"]["expect_all_or_fail"] == ps.BRONZE_FAIL_RULES
-    assert sorted(dp.flows) == sorted((f"ingest_{s}", f"{cat}.bronze.pm_stream") for s in ps.SOURCES)
+    assert d[f"{cat}bronze.pm_stream"]["kind"] == "streaming_table"
+    assert d[f"{cat}bronze.pm_stream"]["expect_all_or_fail"] == ps.BRONZE_FAIL_RULES
+    assert sorted(dp.flows) == sorted((f"ingest_{s}", f"{cat}bronze.pm_stream") for s in ps.SOURCES)
     assert {n: x["kind"] for n, x in d.items() if x["kind"] == "materialized_view"} == {
-        f"{cat}.ops.pm_late_rejected": "materialized_view",
-        f"{cat}.ops.pm_stream_quarantine": "materialized_view",
-        f"{cat}.silver.pm_stream": "materialized_view",
+        f"{cat}ops.pm_late_rejected": "materialized_view",
+        f"{cat}ops.pm_stream_quarantine": "materialized_view",
+        f"{cat}silver.pm_stream": "materialized_view",
     }
     # The pipeline drops exactly what the local step filters out — the same rule strings.
     assert d["stream_accepted"]["drop"] == {**ps.ON_TIME_RULE, **ps.accept_rules(dq)}
-    assert d[f"{cat}.silver.pm_stream"]["warn"] == ps.FLAG_RULES
+    assert d[f"{cat}silver.pm_stream"]["warn"] == ps.FLAG_RULES

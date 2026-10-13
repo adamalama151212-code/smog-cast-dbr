@@ -62,8 +62,14 @@ variables:
     description: "smogcast configuration environment (dev | prod)"
     default: dev
   jobs_principal:
-    # Set per target. One value for `run_as` and for the owner of the Jobs and the pipeline.
+    # One value for `run_as` and for the owner of the Jobs and the pipeline. Empty where there is no principal
+    # (the course's PROD): the Jobs then run as, and belong to, whoever deploys.
     description: "Application (client) id of the service principal that runs and owns the Jobs and the pipeline"
+    default: ""
+  schema_prefix:
+    # Must equal storage.schema_prefix in conf/<env>.yaml. Empty where the catalog is ours alone.
+    description: "Prefix of our schemas in a catalog shared with other projects (e.g. smogcast_)"
+    default: ""
   node_type:
     # Set per target: DEV and PROD are workspaces on different Azure accounts, and VM availability depends
     # on the region and the subscription's per-family vCPU quota.
@@ -144,16 +150,61 @@ targets:
       live_trigger_pause_status: UNPAUSED
 
   prod:
-    # mode: production — the bundle refuses deploys from a laptop with uncommitted changes;
-    # PROD is deployed ONLY by CI.
+    # The course's shared workspace (dbr_dev_trial_2, East US). What a shared account changes, all of it in this target:
+    #   - no service principal of our own → no `run_as`: the Jobs run as, and belong to, the account that deploys;
+    #   - no catalog of our own → prefixed schemas in the shared catalog, created by the bundle (schemas, volumes);
+    #   - no Azure resources of our own → no Azure Function: the live Job polls the GIOŚ API itself.
+    # The course asks to keep serverless for what needs it: here the SQL Warehouse and the stream pipeline (an update
+    # of about 2 minutes; a classic cluster would take about 11 minutes to start for it). The Jobs use Job clusters.
+    # mode: production — the bundle refuses deploys from a laptop with uncommitted changes; deployed by CI from a tag.
     mode: production
     workspace:
-      host: https://adb-YYYYYYYYYYYYYYY.Y.azuredatabricks.net   # TODO: PROD workspace URL
-    # Jobs on PROD run as a service principal, never as the person who happened to deploy.
-    run_as:
-      service_principal_name: ${var.jobs_principal}
+      host: https://adb-7405618361895520.0.azuredatabricks.net
+      # One copy, in the folder of the account that deploys (a laptop and CI use the same account there). Not
+      # /Workspace/Shared as on DEV: on the course's workspace every participant could change the files.
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
     variables:
       env: prod
-      jobs_principal: 00000000-0000-0000-0000-000000000000   # TODO: application (client) id of the SP
-      catalog: smogcast_prod   # TODO: the catalog agreed with the course
-      node_type: Standard_DC4as_v5   # TODO: check what the course's PROD workspace offers (region, quota)
+      catalog: dbr_dev
+      schema_prefix: smogcast_
+      # D4ds_v5 (4 vCPU, 16 GB, about 1 DBU): on the course's list of allowed types; small clusters only (up to 2 DBU).
+      node_type: Standard_D4ds_v5
+    resources:
+      schemas:
+        bronze: {catalog_name: "${var.catalog}", name: "${var.schema_prefix}bronze", comment: "smogcast – raw data as delivered"}
+        silver: {catalog_name: "${var.catalog}", name: "${var.schema_prefix}silver", comment: "smogcast – cleaned data and model features"}
+        gold: {catalog_name: "${var.catalog}", name: "${var.schema_prefix}gold", comment: "smogcast – forecasts, verification, data quality"}
+        ops: {catalog_name: "${var.catalog}", name: "${var.schema_prefix}ops", comment: "smogcast – quarantine, rejected readings, access policy"}
+        gold_secure: {catalog_name: "${var.catalog}", name: "${var.schema_prefix}gold_secure", comment: "smogcast – row/column-secured views of gold"}
+        raw: {catalog_name: "${var.catalog}", name: "${var.schema_prefix}raw", comment: "smogcast – volumes: landing files, checkpoints, saved models"}
+      volumes:
+        landing: {catalog_name: "${var.catalog}", schema_name: "${resources.schemas.raw.name}", name: landing, volume_type: MANAGED}
+        checkpoints: {catalog_name: "${var.catalog}", schema_name: "${resources.schemas.raw.name}", name: checkpoints, volume_type: MANAGED}
+        models: {catalog_name: "${var.catalog}", schema_name: "${resources.schemas.raw.name}", name: models, volume_type: MANAGED}
+      jobs:
+        smogcast_live:
+          tasks:
+            # The two polls the Azure Function does on DEV (the same code: smogcast.ingest.live_poll). The GIOŚ API
+            # returns about 3 days back, so three runs a day lose no reading.
+            - task_key: ingest_gios_registry
+              max_retries: 2
+              min_retry_interval_millis: 600000
+              retry_on_timeout: true
+              timeout_seconds: 1800
+              job_cluster_key: live
+              python_wheel_task: {package_name: smogcast_ingest, entry_point: smogcast-ingest, parameters: ["--step", "gios-registry", "--env", "${var.env}"]}
+              libraries: [{whl: ./packages/core/dist/*.whl}, {whl: ./packages/ingest/dist/*.whl}]
+            - task_key: ingest_gios_live
+              max_retries: 2
+              min_retry_interval_millis: 600000
+              retry_on_timeout: true
+              timeout_seconds: 1800
+              depends_on: [{task_key: ingest_gios_registry}]   # reads the newest registry snapshot
+              job_cluster_key: live
+              python_wheel_task: {package_name: smogcast_ingest, entry_point: smogcast-ingest, parameters: ["--step", "gios-live", "--env", "${var.env}"]}
+              libraries: [{whl: ./packages/core/dist/*.whl}, {whl: ./packages/ingest/dist/*.whl}]
+            # depends_on of a target is ADDED to the task's list in resources/job_smogcast_live.yml
+            - task_key: bronze_station_snapshots
+              depends_on: [{task_key: ingest_gios_registry}]
+            - task_key: stream_pipeline
+              depends_on: [{task_key: ingest_gios_live}]

@@ -28,13 +28,14 @@ spark = SparkSession.getActiveSession()
 CFG = load_config(spark.conf.get("smogcast.env"))
 DQ = CFG["pm_dq"]
 CATALOG = CFG["storage"]["catalog"]
+SCHEMA_PREFIX = CFG["storage"].get("schema_prefix", "")   # a shared catalog: <prefix>bronze, <prefix>silver, …
 LANDING = CFG["storage"]["landing_root"]
 # GIOŚ API polls land in their own zone (the Azure Function's container, external volume raw.landing_live).
 LIVE_LANDING = CFG["storage"].get("live_landing_root", LANDING)
 
 
 def table(layer: str, name: str) -> str:
-    return f"{CATALOG}.{layer}.{name}"
+    return f"{CATALOG}.{SCHEMA_PREFIX}{layer}.{name}"
 
 
 # ----------------------------------------------------------------------------- bronze: every record as delivered
