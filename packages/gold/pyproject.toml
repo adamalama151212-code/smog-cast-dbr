@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smogcast-gold"
+version = "0.1.0"  # x-release-please-version (must equal ../../VERSION, checked by a test)
+description = "smogcast step: business-level gold tables"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "smogcast-core==0.1.0",  # x-release-please-version
+]
+
+[project.scripts]
+# One console script per wheel; a Databricks python_wheel_task calls it with --step.
+smogcast-gold = "smogcast.gold.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["smogcast.*"]
+namespaces = true  # PEP 420: no src/smogcast/__init__.py in any smogcast-* wheel
