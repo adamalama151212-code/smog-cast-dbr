@@ -1,0 +1,29 @@
+# smogcast-cli: LOCAL convenience only. It depends on every step wheel and runs steps
+# in order (`smogcast run-batch`). On Databricks this role is played by the Lakeflow Job,
+# which runs each step from its own wheel — this package is never deployed there.
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smogcast-cli"
+version = "0.1.0"  # x-release-please-version (must equal ../../VERSION, checked by a test)
+description = "smogcast local command line: runs pipeline steps from all step wheels"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "smogcast-core==0.1.0",  # x-release-please-version
+    "smogcast-ingest==0.1.0",  # x-release-please-version
+    "smogcast-bronze==0.1.0",  # x-release-please-version
+    "smogcast-silver-clean==0.1.0",  # x-release-please-version
+    "smogcast-silver-transform==0.1.0",  # x-release-please-version
+    "smogcast-model==0.1.0",  # x-release-please-version
+    "smogcast-gold==0.1.0",  # x-release-please-version
+]
+
+[project.scripts]
+smogcast = "smogcast.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["smogcast.*"]
+namespaces = true  # PEP 420: no src/smogcast/__init__.py in any smogcast-* wheel
