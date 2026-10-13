@@ -1,0 +1,4 @@
+# Development tools (not part of any wheel).
+pytest>=8
+ruff>=0.5
+build>=1.2

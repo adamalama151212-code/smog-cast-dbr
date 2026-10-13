@@ -1,0 +1,28 @@
+# Local data (landing, Delta tables, checkpoints) — generated, not versioned
+data/
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# Databricks Asset Bundles (local deploy state)
+.databricks/
+
+# IDE
+.idea/
+.vscode/
+data-offline/
+
+# Built wheels of the monorepo packages
+packages/*/dist/
+packages/*/build/

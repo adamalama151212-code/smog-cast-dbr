@@ -1,0 +1,15 @@
+# Usage: docker compose run --rm smogcast smogcast steps
+services:
+  smogcast:
+    build: .
+    image: smogcast-dbr:local
+    working_dir: /app
+    # The repository is mounted: code changes work without rebuilding the image
+    # (packages are installed in editable mode) and results (data/) land on your disk.
+    volumes:
+      - .:/app
+    environment:
+      SMOGCAST_ENV: local
+    # Spark UI (http://localhost:4040) — works with `docker compose run --service-ports ...`.
+    ports:
+      - "4040:4040"

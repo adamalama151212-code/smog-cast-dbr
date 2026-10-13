@@ -1,0 +1,29 @@
+# =============================================================================
+# Root of the smogcast monorepo — TOOLING ONLY (ruff, pytest).
+#
+# There is no installable project here: every pipeline step is its own wheel in
+# packages/<package>/pyproject.toml (ARCHITECTURE.md, section 2). All wheels share the
+# `smogcast` namespace and the version in ./VERSION.
+# =============================================================================
+
+[tool.pytest.ini_options]
+testpaths = ["packages"]
+# importlib mode: several packages have test files with the same name
+# (test_entry_point.py), which the default "prepend" mode cannot import side by side.
+addopts = "-ra --import-mode=importlib"
+markers = [
+    "integration: whole pipeline on synthetic inputs (minutes); skip with -m \"not integration\"",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+# E/F = errors and unused imports, I = import sorting, B = common pitfalls,
+# UP = modern syntax. Deliberately no purely stylistic rules.
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]  # line length is left to the formatter
+
+[tool.ruff.lint.isort]
+known-first-party = ["smogcast"]
