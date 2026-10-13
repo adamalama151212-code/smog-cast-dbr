@@ -1,0 +1,13 @@
+# AI/BI dashboard on gold (E9 point 6) — the course requirement "a gold-layer analytics dashboard".
+# The queries name tables without a catalog: dataset_catalog / dataset_schema point them at the SECURE views, so the
+# dashboard honours row/column-level security (gold_secure, E9 point 5). embed_credentials: false = every viewer
+# queries as themselves — a regional user sees only their voivodeship (ARCHITECTURE.md, section 4a).
+resources:
+  dashboards:
+    smogcast:
+      display_name: smogcast – PM10 and PM2.5 forecast   # no "/" allowed in dashboard names
+      file_path: ../dashboards/smogcast.lvdash.json
+      warehouse_id: ${var.warehouse_id}
+      dataset_catalog: ${var.catalog}
+      dataset_schema: gold_secure
+      embed_credentials: false

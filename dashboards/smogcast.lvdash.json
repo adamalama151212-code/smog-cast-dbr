@@ -1,0 +1,2520 @@
+{
+  "datasets": [
+    {
+      "name": "tomorrow",
+      "displayName": "Tomorrow's forecast",
+      "queryLines": [
+        "SELECT city_name, pollutant, target_day, ROUND(100 * probability, 1) AS probability_pct,\n",
+        "       -- table text: the widget would print 20.00 and null, so numbers and \"–\" are formatted here\n",
+        "       coalesce(format_number(100 * probability, 1), '–') AS probability_txt,\n",
+        "       CASE WHEN warned THEN 'warning' WHEN status = 'ok' THEN 'no warning' ELSE 'no forecast' END AS verdict,\n",
+        "       run_kind, date_format(issued_at + INTERVAL 1 HOUR, 'yyyy-MM-dd HH:mm') AS issued_cet,\n",
+        "       coalesce(format_number(pm_d1_max_ug_m3, 0), '–') AS yesterday_ug_m3,\n",
+        "       coalesce(format_number(pm_d_morning_max_ug_m3, 0), '–') AS this_morning_ug_m3,\n",
+        "       coalesce(format_number(t_mean_c, 1), '–') AS temperature_c, coalesce(format_number(wind_mean_ms, 1), '–') AS wind_ms,\n",
+        "       coalesce(CAST(calm_hours AS STRING), '–') AS calm_hours, coalesce(format_number(precip_sum_mm, 1), '–') AS rain_mm,\n",
+        "       coalesce(unusable_reason, '–') AS unusable_reason\n",
+        "FROM forecast_tomorrow\n",
+        "WHERE target_day = (SELECT max(target_day) FROM forecast_tomorrow)\n",
+        "ORDER BY probability DESC"
+      ]
+    },
+    {
+      "name": "tomorrow_limits",
+      "displayName": "Daily limits",
+      "queryLines": [
+        "SELECT CAST(max(CASE WHEN pollutant = 'PM10' THEN limit_ug_m3 END) AS INT) AS pm10_limit,\n",
+        "       CAST(max(CASE WHEN pollutant = 'PM2.5' THEN limit_ug_m3 END) AS INT) AS pm25_limit\n",
+        "FROM forecast_tomorrow\n",
+        "WHERE target_day = (SELECT max(target_day) FROM forecast_tomorrow)"
+      ]
+    },
+    {
+      "name": "tomorrow_summary",
+      "displayName": "Tomorrow – summary",
+      "queryLines": [
+        "SELECT max(target_day) AS target_day, count_if(warned) AS warnings, count_if(status = 'ok') AS forecasts,\n",
+        "       max(run_kind) AS run_kind\n",
+        "FROM forecast_tomorrow\n",
+        "WHERE target_day = (SELECT max(target_day) FROM forecast_tomorrow)"
+      ]
+    },
+    {
+      "name": "updates_pm10",
+      "displayName": "Tomorrow's forecast run by run – PM10",
+      "queryLines": [
+        "SELECT city_name, run_kind, ROUND(100 * probability, 1) AS probability_pct\n",
+        "FROM forecast_history\n",
+        "WHERE target_day = (SELECT max(target_day) FROM forecast_history) AND pollutant = 'PM10'\n",
+        "  AND probability IS NOT NULL\n",
+        "ORDER BY city_name, CASE run_kind WHEN 'preliminary' THEN 1 WHEN 'official' THEN 2 ELSE 3 END, issued_at"
+      ]
+    },
+    {
+      "name": "updates_pm25",
+      "displayName": "Tomorrow's forecast run by run – PM2.5",
+      "queryLines": [
+        "SELECT city_name, run_kind, ROUND(100 * probability, 1) AS probability_pct\n",
+        "FROM forecast_history\n",
+        "WHERE target_day = (SELECT max(target_day) FROM forecast_history) AND pollutant = 'PM2.5'\n",
+        "  AND probability IS NOT NULL\n",
+        "ORDER BY city_name, CASE run_kind WHEN 'preliminary' THEN 1 WHEN 'official' THEN 2 ELSE 3 END, issued_at"
+      ]
+    },
+    {
+      "name": "updates_table",
+      "displayName": "Tomorrow's forecast runs side by side",
+      "queryLines": [
+        "SELECT target_day, city_name, pollutant,\n",
+        "       coalesce(format_number(100 * max(CASE WHEN run_kind = 'preliminary' THEN probability END), 1), '–')\n",
+        "         AS preliminary_pct,\n",
+        "       coalesce(format_number(100 * max(CASE WHEN run_kind = 'official' THEN probability END), 1), '–')\n",
+        "         AS official_pct,\n",
+        "       coalesce(format_number(100 * max_by(CASE WHEN run_kind = 'update' THEN probability END,\n",
+        "                                           CASE WHEN run_kind = 'update' THEN issued_at END), 1), '–')\n",
+        "         AS latest_update_pct\n",
+        "FROM forecast_history\n",
+        "WHERE target_day = (SELECT max(target_day) FROM forecast_history)\n",
+        "GROUP BY ALL\n",
+        "ORDER BY city_name, pollutant"
+      ]
+    },
+    {
+      "name": "season",
+      "displayName": "Exceedance days per heating season",
+      "queryLines": [
+        "SELECT heating_season, city_name, pollutant, count_if(exceeded) AS exceedance_days, count(*) AS measured_days\n",
+        "FROM measured_daily\n",
+        "WHERE heating_season IS NOT NULL\n",
+        "GROUP BY ALL"
+      ]
+    },
+    {
+      "name": "recent",
+      "displayName": "Measured – last 60 days",
+      "queryLines": [
+        "SELECT day_cet, city_name, pollutant, ROUND(max_station_mean_ug_m3, 1) AS worst_station_ug_m3, limit_ug_m3, source\n",
+        "FROM measured_daily\n",
+        "WHERE day_cet >= date_sub(current_date(), 60)"
+      ]
+    },
+    {
+      "name": "verification",
+      "displayName": "Official forecasts vs measurements",
+      "queryLines": [
+        "WITH v AS (\n",
+        "  SELECT target_day, city_name, pollutant, concat(format_number(limit_ug_m3, 0), ' µg/m³') AS daily_limit,\n",
+        "         concat(format_number(100 * probability, 0), '% chance') AS p,\n",
+        "         concat('measured ', format_number(measured_max_ug_m3, 0), ' µg/m³') AS m, outcome\n",
+        "  FROM forecast_verification\n",
+        "), verdicts AS (\n",
+        "  SELECT target_day, city_name, pollutant, daily_limit,\n",
+        "         CASE outcome\n",
+        "           WHEN 'hit' THEN concat('✓ smog, warned in advance (', p, ' → ', m, ')')\n",
+        "           WHEN 'correct_no_warning' THEN concat('✓ no smog, as forecast (', p, ' → ', m, ')')\n",
+        "           WHEN 'miss' THEN concat('✗ smog missed (', p, ' → ', m, ')')\n",
+        "           WHEN 'false_alarm' THEN concat('✗ false alarm (', p, ' → ', m, ')')\n",
+        "           WHEN 'pending' THEN concat('⏳ waiting for the day to end (', p, ')')\n",
+        "           WHEN 'no_data' THEN concat('– no valid measurement (', p, ')')\n",
+        "           WHEN 'no_forecast' THEN '– no forecast issued'\n",
+        "         END AS verdict\n",
+        "  FROM v\n",
+        ")\n",
+        "SELECT target_day, city_name,\n",
+        "       max(CASE WHEN pollutant = 'PM10' THEN daily_limit END) AS pm10_limit,\n",
+        "       max(CASE WHEN pollutant = 'PM10' THEN verdict END) AS pm10,\n",
+        "       max(CASE WHEN pollutant = 'PM2.5' THEN daily_limit END) AS pm25_limit,\n",
+        "       max(CASE WHEN pollutant = 'PM2.5' THEN verdict END) AS pm25\n",
+        "FROM verdicts\n",
+        "GROUP BY ALL\n",
+        "ORDER BY target_day DESC, city_name"
+      ]
+    },
+    {
+      "name": "verification_summary",
+      "displayName": "Live track record",
+      "queryLines": [
+        "SELECT pollutant,\n",
+        "       count_if(outcome IN ('hit', 'miss', 'false_alarm', 'correct_no_warning')) AS judged_forecasts,\n",
+        "       count_if(outcome = 'hit') AS hits, count_if(outcome = 'miss') AS misses,\n",
+        "       count_if(outcome = 'false_alarm') AS false_alarms, count_if(outcome = 'correct_no_warning') AS correct_quiet,\n",
+        "       ROUND(avg(squared_error), 4) AS live_brier, count_if(outcome = 'pending') AS pending\n",
+        "FROM forecast_verification\n",
+        "GROUP BY pollutant\n",
+        "ORDER BY pollutant"
+      ]
+    },
+    {
+      "name": "test_days_pm10",
+      "displayName": "Test year 2025 – PM10 warnings per month",
+      "queryLines": [
+        "WITH days AS (\n",
+        "  SELECT CASE p.city_id WHEN 'warszawa' THEN 'Warszawa' WHEN 'krakow' THEN 'Kraków' WHEN 'wroclaw' THEN 'Wrocław' WHEN 'lodz' THEN 'Łódź' WHEN 'poznan' THEN 'Poznań' WHEN 'gdansk' THEN 'Gdańsk' WHEN 'szczecin' THEN 'Szczecin' WHEN 'bydgoszcz' THEN 'Bydgoszcz' WHEN 'lublin' THEN 'Lublin' WHEN 'bialystok' THEN 'Białystok' END AS city_name, p.pollutant, date_format(p.target_day, 'yyyy-MM') AS month, p.label, p.warned,\n",
+        "         b.warned AS persistence_warned\n",
+        "  FROM backtest_predictions p\n",
+        "  JOIN (SELECT DISTINCT pollutant, model FROM model_selection WHERE operational) s\n",
+        "    ON s.pollutant = p.pollutant AND s.model = p.model\n",
+        "  LEFT JOIN backtest_predictions b\n",
+        "    ON b.model = 'persistence' AND b.split = p.split AND b.city_id = p.city_id AND b.pollutant = p.pollutant\n",
+        "   AND b.target_day = p.target_day\n",
+        "  WHERE p.split = 'test'\n",
+        ")\n",
+        "SELECT city_name, month,\n",
+        "       CASE WHEN warned AND label = 1 THEN '✓ smog, warned in advance'\n",
+        "            WHEN label = 1 THEN '✗ smog missed'\n",
+        "            ELSE '✗ false alarm' END AS outcome\n",
+        "FROM days\n",
+        "WHERE pollutant = 'PM10' AND (label = 1 OR warned)\n",
+        "ORDER BY month, CASE WHEN warned AND label = 1 THEN 1 WHEN label = 1 THEN 2 ELSE 3 END"
+      ]
+    },
+    {
+      "name": "test_days_pm25",
+      "displayName": "Test year 2025 – PM2.5 warnings per month",
+      "queryLines": [
+        "WITH days AS (\n",
+        "  SELECT CASE p.city_id WHEN 'warszawa' THEN 'Warszawa' WHEN 'krakow' THEN 'Kraków' WHEN 'wroclaw' THEN 'Wrocław' WHEN 'lodz' THEN 'Łódź' WHEN 'poznan' THEN 'Poznań' WHEN 'gdansk' THEN 'Gdańsk' WHEN 'szczecin' THEN 'Szczecin' WHEN 'bydgoszcz' THEN 'Bydgoszcz' WHEN 'lublin' THEN 'Lublin' WHEN 'bialystok' THEN 'Białystok' END AS city_name, p.pollutant, date_format(p.target_day, 'yyyy-MM') AS month, p.label, p.warned,\n",
+        "         b.warned AS persistence_warned\n",
+        "  FROM backtest_predictions p\n",
+        "  JOIN (SELECT DISTINCT pollutant, model FROM model_selection WHERE operational) s\n",
+        "    ON s.pollutant = p.pollutant AND s.model = p.model\n",
+        "  LEFT JOIN backtest_predictions b\n",
+        "    ON b.model = 'persistence' AND b.split = p.split AND b.city_id = p.city_id AND b.pollutant = p.pollutant\n",
+        "   AND b.target_day = p.target_day\n",
+        "  WHERE p.split = 'test'\n",
+        ")\n",
+        "SELECT city_name, month,\n",
+        "       CASE WHEN warned AND label = 1 THEN '✓ smog, warned in advance'\n",
+        "            WHEN label = 1 THEN '✗ smog missed'\n",
+        "            ELSE '✗ false alarm' END AS outcome\n",
+        "FROM days\n",
+        "WHERE pollutant = 'PM2.5' AND (label = 1 OR warned)\n",
+        "ORDER BY month, CASE WHEN warned AND label = 1 THEN 1 WHEN label = 1 THEN 2 ELSE 3 END"
+      ]
+    },
+    {
+      "name": "test_months",
+      "displayName": "Test year 2025 – month by month, per city",
+      "queryLines": [
+        "WITH days AS (\n",
+        "  SELECT CASE p.city_id WHEN 'warszawa' THEN 'Warszawa' WHEN 'krakow' THEN 'Kraków' WHEN 'wroclaw' THEN 'Wrocław' WHEN 'lodz' THEN 'Łódź' WHEN 'poznan' THEN 'Poznań' WHEN 'gdansk' THEN 'Gdańsk' WHEN 'szczecin' THEN 'Szczecin' WHEN 'bydgoszcz' THEN 'Bydgoszcz' WHEN 'lublin' THEN 'Lublin' WHEN 'bialystok' THEN 'Białystok' END AS city_name, p.pollutant, date_format(p.target_day, 'yyyy-MM') AS month, p.label, p.warned,\n",
+        "         b.warned AS persistence_warned\n",
+        "  FROM backtest_predictions p\n",
+        "  JOIN (SELECT DISTINCT pollutant, model FROM model_selection WHERE operational) s\n",
+        "    ON s.pollutant = p.pollutant AND s.model = p.model\n",
+        "  LEFT JOIN backtest_predictions b\n",
+        "    ON b.model = 'persistence' AND b.split = p.split AND b.city_id = p.city_id AND b.pollutant = p.pollutant\n",
+        "   AND b.target_day = p.target_day\n",
+        "  WHERE p.split = 'test'\n",
+        ")\n",
+        "SELECT city_name, month, pollutant, CAST(sum(label) AS INT) AS smog_days, count_if(warned) AS warnings,\n",
+        "       CASE WHEN sum(label) = 0 THEN '–' ELSE concat(CAST(count_if(warned AND label = 1) AS INT), ' of ', CAST(sum(label) AS INT), ' (', CAST(ROUND(100 * count_if(warned AND label = 1) / sum(label)) AS INT), '%)') END AS caught,\n",
+        "       CASE WHEN count_if(warned) = 0 THEN '–' ELSE concat(CAST(count_if(warned AND label = 1) AS INT), ' of ', CAST(count_if(warned) AS INT), ' (', CAST(ROUND(100 * count_if(warned AND label = 1) / count_if(warned)) AS INT), '%)') END AS warnings_right,\n",
+        "       CASE WHEN sum(label) = 0 THEN '–' ELSE concat(CAST(count_if(persistence_warned AND label = 1) AS INT), ' of ', CAST(sum(label) AS INT), ' (', CAST(ROUND(100 * count_if(persistence_warned AND label = 1) / sum(label)) AS INT), '%)') END AS persistence_caught,\n",
+        "       CASE WHEN count_if(persistence_warned) = 0 THEN '–' ELSE concat(CAST(count_if(persistence_warned AND label = 1) AS INT), ' of ', CAST(count_if(persistence_warned) AS INT), ' (', CAST(ROUND(100 * count_if(persistence_warned AND label = 1) / count_if(persistence_warned)) AS INT), '%)') END AS persistence_right\n",
+        "FROM days\n",
+        "GROUP BY ALL\n",
+        "HAVING sum(label) > 0 OR count_if(warned) > 0 OR count_if(persistence_warned) > 0   -- quiet months: nothing to show\n",
+        "ORDER BY city_name, month, pollutant"
+      ]
+    },
+    {
+      "name": "test_months_all",
+      "displayName": "Test year 2025 – month by month, all cities together",
+      "queryLines": [
+        "WITH days AS (\n",
+        "  SELECT CASE p.city_id WHEN 'warszawa' THEN 'Warszawa' WHEN 'krakow' THEN 'Kraków' WHEN 'wroclaw' THEN 'Wrocław' WHEN 'lodz' THEN 'Łódź' WHEN 'poznan' THEN 'Poznań' WHEN 'gdansk' THEN 'Gdańsk' WHEN 'szczecin' THEN 'Szczecin' WHEN 'bydgoszcz' THEN 'Bydgoszcz' WHEN 'lublin' THEN 'Lublin' WHEN 'bialystok' THEN 'Białystok' END AS city_name, p.pollutant, date_format(p.target_day, 'yyyy-MM') AS month, p.label, p.warned,\n",
+        "         b.warned AS persistence_warned\n",
+        "  FROM backtest_predictions p\n",
+        "  JOIN (SELECT DISTINCT pollutant, model FROM model_selection WHERE operational) s\n",
+        "    ON s.pollutant = p.pollutant AND s.model = p.model\n",
+        "  LEFT JOIN backtest_predictions b\n",
+        "    ON b.model = 'persistence' AND b.split = p.split AND b.city_id = p.city_id AND b.pollutant = p.pollutant\n",
+        "   AND b.target_day = p.target_day\n",
+        "  WHERE p.split = 'test'\n",
+        ")\n",
+        "SELECT month, pollutant, CAST(sum(label) AS INT) AS smog_days, count_if(warned) AS warnings,\n",
+        "       CASE WHEN sum(label) = 0 THEN '–' ELSE concat(CAST(count_if(warned AND label = 1) AS INT), ' of ', CAST(sum(label) AS INT), ' (', CAST(ROUND(100 * count_if(warned AND label = 1) / sum(label)) AS INT), '%)') END AS caught,\n",
+        "       CASE WHEN count_if(warned) = 0 THEN '–' ELSE concat(CAST(count_if(warned AND label = 1) AS INT), ' of ', CAST(count_if(warned) AS INT), ' (', CAST(ROUND(100 * count_if(warned AND label = 1) / count_if(warned)) AS INT), '%)') END AS warnings_right,\n",
+        "       CASE WHEN sum(label) = 0 THEN '–' ELSE concat(CAST(count_if(persistence_warned AND label = 1) AS INT), ' of ', CAST(sum(label) AS INT), ' (', CAST(ROUND(100 * count_if(persistence_warned AND label = 1) / sum(label)) AS INT), '%)') END AS persistence_caught,\n",
+        "       CASE WHEN count_if(persistence_warned) = 0 THEN '–' ELSE concat(CAST(count_if(persistence_warned AND label = 1) AS INT), ' of ', CAST(count_if(persistence_warned) AS INT), ' (', CAST(ROUND(100 * count_if(persistence_warned AND label = 1) / count_if(persistence_warned)) AS INT), '%)') END AS persistence_right\n",
+        "FROM days\n",
+        "GROUP BY ALL\n",
+        "HAVING sum(label) > 0 OR count_if(warned) > 0 OR count_if(persistence_warned) > 0   -- quiet months: nothing to show\n",
+        "ORDER BY month, pollutant"
+      ]
+    },
+    {
+      "name": "brier_pm10",
+      "displayName": "Brier score PM10 (test year 2025)",
+      "queryLines": [
+        "SELECT CASE model WHEN 'gbt' THEN 'Model (gradient-boosted trees)' WHEN 'logistic' THEN 'Logistic regression' WHEN 'persistence' THEN 'Tomorrow like today' WHEN 'climatology' THEN 'Calendar average' ELSE model END AS model_name, ROUND(brier, 4) AS brier\n",
+        "FROM backtest_metrics\n",
+        "WHERE split = 'test' AND city_id = 'ALL' AND pollutant = 'PM10'\n",
+        "ORDER BY brier"
+      ]
+    },
+    {
+      "name": "brier_pm25",
+      "displayName": "Brier score PM2.5 (test year 2025)",
+      "queryLines": [
+        "SELECT CASE model WHEN 'gbt' THEN 'Model (gradient-boosted trees)' WHEN 'logistic' THEN 'Logistic regression' WHEN 'persistence' THEN 'Tomorrow like today' WHEN 'climatology' THEN 'Calendar average' ELSE model END AS model_name, ROUND(brier, 4) AS brier\n",
+        "FROM backtest_metrics\n",
+        "WHERE split = 'test' AND city_id = 'ALL' AND pollutant = 'PM2.5'\n",
+        "ORDER BY brier"
+      ]
+    },
+    {
+      "name": "reliability",
+      "displayName": "Calibration (test year 2025)",
+      "queryLines": [
+        "SELECT r.pollutant, ROUND(100 * r.mean_probability, 1) AS forecast_pct,\n",
+        "       ROUND(100 * r.observed_frequency, 1) AS observed_pct, r.n_days\n",
+        "FROM reliability r\n",
+        "JOIN (SELECT DISTINCT pollutant, model FROM model_selection WHERE operational) s\n",
+        "  ON s.pollutant = r.pollutant AND s.model = r.model\n",
+        "WHERE r.split = 'test' AND r.n_days >= 30"
+      ]
+    },
+    {
+      "name": "acceptance",
+      "displayName": "Reliability tests",
+      "queryLines": [
+        "SELECT pollutant, CASE criterion WHEN 'K1' THEN 'Better than the calendar average?' WHEN 'K2' THEN 'Better than \"tomorrow like today\"?' WHEN 'K3' THEN 'Does \"70%\" really mean about 70%?' WHEN 'K4a' THEN 'Does it catch smog days?' WHEN 'K4b' THEN 'Are its warnings rarely false?' END AS test, criterion AS code, CASE criterion WHEN 'K1' THEN 'above 0' WHEN 'K2' THEN concat('below ', format_number(threshold, 4)) WHEN 'K3' THEN 'gap at most 15 pp' WHEN 'K4a' THEN 'at least 60%' WHEN 'K4b' THEN 'at most 50%' END AS required, CASE WHEN criterion IN ('K4a', 'K4b') THEN concat(format_number(100 * value, 0), '%') WHEN criterion = 'K3' THEN concat(format_number(100 * value, 1), ' pp') ELSE format_number(value, 4) END AS reached,\n",
+        "       CASE WHEN passed THEN '✓ passed' ELSE '✗ not passed' END AS result\n",
+        "FROM acceptance\n",
+        "UNION ALL\n",
+        "SELECT 'PM2.5', t.test, t.code, '–', '–', '– (PM10 only)'\n",
+        "FROM VALUES ('Does it catch smog days?', 'K4a'), ('Are its warnings rarely false?', 'K4b') AS t(test, code)\n",
+        "ORDER BY pollutant, code"
+      ]
+    },
+    {
+      "name": "dq",
+      "displayName": "Live data quality",
+      "queryLines": [
+        "SELECT source,\n",
+        "       CASE metric WHEN 'records_received' THEN 'Records received' WHEN 'unique_readings' THEN 'Unique readings'\n",
+        "            WHEN 'resent_duplicates' THEN 'Re-sent duplicates (collapsed)' WHEN 'late_rejected' THEN 'Late (rejected)'\n",
+        "            WHEN 'quarantined' THEN 'Quarantined (total)' WHEN 'silver_readings' THEN 'Accepted readings'\n",
+        "            WHEN 'silver_valid' THEN 'Accepted and valid' ELSE metric END AS measure,\n",
+        "       metric, value, ROUND(pct_of_unique, 1) AS pct_of_unique\n",
+        "FROM dq_summary\n",
+        "ORDER BY source, metric"
+      ]
+    },
+    {
+      "name": "dq_reasons",
+      "displayName": "Why readings were set aside",
+      "queryLines": [
+        "SELECT source,\n",
+        "       CASE metric WHEN 'late_rejected' THEN 'late'\n",
+        "                   WHEN 'quarantined_missing_value' THEN 'empty value' WHEN 'quarantined_below_min' THEN 'below 0'\n",
+        "                   WHEN 'quarantined_above_max' THEN 'above 1000 µg/m³' WHEN 'quarantined_unknown_station' THEN 'unknown station'\n",
+        "                   WHEN 'flag_frozen' THEN 'flag: frozen sensor' WHEN 'flag_spike' THEN 'flag: spike'\n",
+        "                   WHEN 'flag_drift' THEN 'flag: drift' END AS reason,\n",
+        "       value\n",
+        "FROM dq_summary\n",
+        "WHERE metric IN ('late_rejected', 'quarantined_missing_value', 'quarantined_below_min', 'quarantined_above_max',\n",
+        "                 'quarantined_unknown_station', 'flag_frozen', 'flag_spike', 'flag_drift')"
+      ]
+    },
+    {
+      "name": "tomorrow_inputs",
+      "displayName": "Tomorrow – inputs per city",
+      "queryLines": [
+        "SELECT city_name, pollutant, target_day, ROUND(100 * probability, 1) AS probability_pct,\n",
+        "       -- table text: the widget would print 20.00 and null, so numbers and \"–\" are formatted here\n",
+        "       coalesce(format_number(100 * probability, 1), '–') AS probability_txt,\n",
+        "       CASE WHEN warned THEN 'warning' WHEN status = 'ok' THEN 'no warning' ELSE 'no forecast' END AS verdict,\n",
+        "       run_kind, date_format(issued_at + INTERVAL 1 HOUR, 'yyyy-MM-dd HH:mm') AS issued_cet,\n",
+        "       coalesce(format_number(pm_d1_max_ug_m3, 0), '–') AS yesterday_ug_m3,\n",
+        "       coalesce(format_number(pm_d_morning_max_ug_m3, 0), '–') AS this_morning_ug_m3,\n",
+        "       coalesce(format_number(t_mean_c, 1), '–') AS temperature_c, coalesce(format_number(wind_mean_ms, 1), '–') AS wind_ms,\n",
+        "       coalesce(CAST(calm_hours AS STRING), '–') AS calm_hours, coalesce(format_number(precip_sum_mm, 1), '–') AS rain_mm,\n",
+        "       coalesce(unusable_reason, '–') AS unusable_reason\n",
+        "FROM forecast_tomorrow\n",
+        "WHERE target_day = (SELECT max(target_day) FROM forecast_tomorrow)\n",
+        "ORDER BY city_name, pollutant"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "tomorrow",
+      "displayName": "Tomorrow",
+      "layout": [
+        {
+          "widget": {
+            "name": "text_01",
+            "multilineTextboxSpec": {
+              "lines": [
+                "# Will the daily limit be exceeded tomorrow?\n",
+                "Probability that the **daily mean of the worst station** in the city exceeds the limit (PM10 50 µg/m³, PM2.5 25 µg/m³). A warning is issued at 50% or more. ",
+                "*What you see depends on who you are: rows by voivodeship and technical columns are filtered by Unity Catalog (schema `gold_secure`).*"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_02",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "tomorrow_summary",
+                  "fields": [
+                    {
+                      "name": "sum(warnings)",
+                      "expression": "SUM(`warnings`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(warnings)",
+                  "displayName": "Warnings for tomorrow"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Warnings for tomorrow"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_03",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "tomorrow_summary",
+                  "fields": [
+                    {
+                      "name": "sum(forecasts)",
+                      "expression": "SUM(`forecasts`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(forecasts)",
+                  "displayName": "Cities × pollutants with a forecast"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Cities × pollutants with a forecast"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "text_04",
+            "multilineTextboxSpec": {
+              "lines": [
+                "**Run kinds**\n",
+                "- *preliminary* – before 11:30 CET, this morning's readings are not in yet\n",
+                "- *official* – first run from 11:30 CET, judged against measurements\n",
+                "- *update* – later run, newer weather forecast"
+              ]
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_05",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "tomorrow",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "probability_pct",
+                      "expression": "`probability_pct`"
+                    },
+                    {
+                      "name": "pollutant",
+                      "expression": "`pollutant`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "city_name",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "City"
+                },
+                "y": {
+                  "fieldName": "probability_pct",
+                  "scale": {
+                    "type": "quantitative",
+                    "domain": {
+                      "min": 0,
+                      "max": 100
+                    }
+                  },
+                  "displayName": "Chance of exceeding the daily limit (%)"
+                },
+                "color": {
+                  "fieldName": "pollutant",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Pollutant"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Chance of an exceedance tomorrow",
+                "showDescription": true,
+                "description": "A warning is issued at 50% or more."
+              },
+              "mark": {
+                "layout": "group"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_06",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "tomorrow_limits",
+                  "fields": [
+                    {
+                      "name": "sum(pm10_limit)",
+                      "expression": "SUM(`pm10_limit`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(pm10_limit)",
+                  "displayName": "PM10 daily limit (µg/m³)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "PM10 daily limit (µg/m³)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 12,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_07",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "tomorrow_limits",
+                  "fields": [
+                    {
+                      "name": "sum(pm25_limit)",
+                      "expression": "SUM(`pm25_limit`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(pm25_limit)",
+                  "displayName": "PM2.5 daily limit (µg/m³)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "PM2.5 daily limit (µg/m³)"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 12,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "filter_08",
+            "queries": [
+              {
+                "name": "filter_city_name_tomorrow_inputs",
+                "query": {
+                  "datasetName": "tomorrow_inputs",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "city_name_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "city_name",
+                    "displayName": "Cities in the table below (empty = all)",
+                    "queryName": "filter_city_name_tomorrow_inputs"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Cities in the table below (empty = all)"
+              },
+              "selection": {
+                "defaultSelection": {
+                  "values": {
+                    "dataType": "STRING",
+                    "values": [
+                      {
+                        "value": "Kraków"
+                      },
+                      {
+                        "value": "Warszawa"
+                      },
+                      {
+                        "value": "Wrocław"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 15,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "table_09",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "tomorrow_inputs",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "pollutant",
+                      "expression": "`pollutant`"
+                    },
+                    {
+                      "name": "probability_txt",
+                      "expression": "`probability_txt`"
+                    },
+                    {
+                      "name": "verdict",
+                      "expression": "`verdict`"
+                    },
+                    {
+                      "name": "run_kind",
+                      "expression": "`run_kind`"
+                    },
+                    {
+                      "name": "issued_cet",
+                      "expression": "`issued_cet`"
+                    },
+                    {
+                      "name": "yesterday_ug_m3",
+                      "expression": "`yesterday_ug_m3`"
+                    },
+                    {
+                      "name": "this_morning_ug_m3",
+                      "expression": "`this_morning_ug_m3`"
+                    },
+                    {
+                      "name": "temperature_c",
+                      "expression": "`temperature_c`"
+                    },
+                    {
+                      "name": "wind_ms",
+                      "expression": "`wind_ms`"
+                    },
+                    {
+                      "name": "calm_hours",
+                      "expression": "`calm_hours`"
+                    },
+                    {
+                      "name": "rain_mm",
+                      "expression": "`rain_mm`"
+                    },
+                    {
+                      "name": "unusable_reason",
+                      "expression": "`unusable_reason`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "city_name",
+                    "displayName": "City"
+                  },
+                  {
+                    "fieldName": "pollutant",
+                    "displayName": "Pollutant"
+                  },
+                  {
+                    "fieldName": "probability_txt",
+                    "displayName": "Chance of exceedance (%)"
+                  },
+                  {
+                    "fieldName": "verdict",
+                    "displayName": "Verdict"
+                  },
+                  {
+                    "fieldName": "run_kind",
+                    "displayName": "Run"
+                  },
+                  {
+                    "fieldName": "issued_cet",
+                    "displayName": "Issued (CET)"
+                  },
+                  {
+                    "fieldName": "yesterday_ug_m3",
+                    "displayName": "Yesterday – worst station, daily mean (µg/m³)"
+                  },
+                  {
+                    "fieldName": "this_morning_ug_m3",
+                    "displayName": "This morning – worst station, 00–10 CET (µg/m³)"
+                  },
+                  {
+                    "fieldName": "temperature_c",
+                    "displayName": "Temp. tomorrow (°C)"
+                  },
+                  {
+                    "fieldName": "wind_ms",
+                    "displayName": "Wind (m/s)"
+                  },
+                  {
+                    "fieldName": "calm_hours",
+                    "displayName": "Calm hours"
+                  },
+                  {
+                    "fieldName": "rain_mm",
+                    "displayName": "Rain (mm)"
+                  },
+                  {
+                    "fieldName": "unusable_reason",
+                    "displayName": "Why no forecast"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Why this forecast – the main inputs"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 17,
+            "width": 6,
+            "height": 8
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "forecast_updates",
+      "displayName": "Forecast updates",
+      "layout": [
+        {
+          "widget": {
+            "name": "text_10",
+            "multilineTextboxSpec": {
+              "lines": [
+                "# How today's forecast for tomorrow changed\n",
+                "Tomorrow's forecast is computed three times today: preliminary (00:30 CET, this morning's readings not in yet), official (11:30 CET) and update (17:30 CET, newer weather forecast). Only the **official** one is later judged against measurements (page *Did it come true?*). A missing bar = that run has not happened yet."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_11",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "updates_pm10",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "probability_pct",
+                      "expression": "`probability_pct`"
+                    },
+                    {
+                      "name": "run_kind",
+                      "expression": "`run_kind`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "city_name",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "natural-order"
+                    }
+                  },
+                  "displayName": "City"
+                },
+                "y": {
+                  "fieldName": "probability_pct",
+                  "scale": {
+                    "type": "quantitative",
+                    "domain": {
+                      "min": 0,
+                      "max": 100
+                    }
+                  },
+                  "displayName": "Chance of exceeding the daily limit (%)"
+                },
+                "color": {
+                  "fieldName": "run_kind",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "natural-order"
+                    }
+                  },
+                  "displayName": "Run"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "PM10 – tomorrow's forecast, run by run",
+                "showDescription": true,
+                "description": "A warning is issued at 50% or more."
+              },
+              "mark": {
+                "layout": "group"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_12",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "updates_pm25",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "probability_pct",
+                      "expression": "`probability_pct`"
+                    },
+                    {
+                      "name": "run_kind",
+                      "expression": "`run_kind`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "city_name",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "natural-order"
+                    }
+                  },
+                  "displayName": "City"
+                },
+                "y": {
+                  "fieldName": "probability_pct",
+                  "scale": {
+                    "type": "quantitative",
+                    "domain": {
+                      "min": 0,
+                      "max": 100
+                    }
+                  },
+                  "displayName": "Chance of exceeding the daily limit (%)"
+                },
+                "color": {
+                  "fieldName": "run_kind",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "natural-order"
+                    }
+                  },
+                  "displayName": "Run"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "PM2.5 – tomorrow's forecast, run by run",
+                "showDescription": true,
+                "description": "A warning is issued at 50% or more."
+              },
+              "mark": {
+                "layout": "group"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 9,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "table_13",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "updates_table",
+                  "fields": [
+                    {
+                      "name": "target_day",
+                      "expression": "`target_day`"
+                    },
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "pollutant",
+                      "expression": "`pollutant`"
+                    },
+                    {
+                      "name": "preliminary_pct",
+                      "expression": "`preliminary_pct`"
+                    },
+                    {
+                      "name": "official_pct",
+                      "expression": "`official_pct`"
+                    },
+                    {
+                      "name": "latest_update_pct",
+                      "expression": "`latest_update_pct`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "target_day",
+                    "displayName": "Forecast for (day)"
+                  },
+                  {
+                    "fieldName": "city_name",
+                    "displayName": "City"
+                  },
+                  {
+                    "fieldName": "pollutant",
+                    "displayName": "Pollutant"
+                  },
+                  {
+                    "fieldName": "preliminary_pct",
+                    "displayName": "Preliminary (%)"
+                  },
+                  {
+                    "fieldName": "official_pct",
+                    "displayName": "Official (%)"
+                  },
+                  {
+                    "fieldName": "latest_update_pct",
+                    "displayName": "Latest update (%)"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "The same in numbers"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 16,
+            "width": 6,
+            "height": 8
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "measured",
+      "displayName": "Measured",
+      "layout": [
+        {
+          "widget": {
+            "name": "text_14",
+            "multilineTextboxSpec": {
+              "lines": [
+                "# What was really measured\n",
+                "An **exceedance day**: the daily mean of the city's worst station is above the limit. Heating season = October–April. Data: GIOŚ archive 2021–2025 (verified) and the live GIOŚ feed (finished days only, not yet verified by GIOŚ). PM10 limit: at most 35 exceedance days a year."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "filter_15",
+            "queries": [
+              {
+                "name": "filter_pollutant_season",
+                "query": {
+                  "datasetName": "season",
+                  "fields": [
+                    {
+                      "name": "pollutant",
+                      "expression": "`pollutant`"
+                    },
+                    {
+                      "name": "pollutant_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "filter_pollutant_recent",
+                "query": {
+                  "datasetName": "recent",
+                  "fields": [
+                    {
+                      "name": "pollutant",
+                      "expression": "`pollutant`"
+                    },
+                    {
+                      "name": "pollutant_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "pollutant",
+                    "displayName": "Pollutant",
+                    "queryName": "filter_pollutant_season"
+                  },
+                  {
+                    "fieldName": "pollutant",
+                    "displayName": "Pollutant",
+                    "queryName": "filter_pollutant_recent"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Pollutant"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_16",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "season",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "exceedance_days",
+                      "expression": "`exceedance_days`"
+                    },
+                    {
+                      "name": "heating_season",
+                      "expression": "`heating_season`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "city_name",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "City"
+                },
+                "y": {
+                  "fieldName": "exceedance_days",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Exceedance days"
+                },
+                "color": {
+                  "fieldName": "heating_season",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Heating season"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Exceedance days per heating season"
+              },
+              "mark": {
+                "layout": "group"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "line_17",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "recent",
+                  "fields": [
+                    {
+                      "name": "day_cet",
+                      "expression": "`day_cet`"
+                    },
+                    {
+                      "name": "worst_station_ug_m3",
+                      "expression": "`worst_station_ug_m3`"
+                    },
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "day_cet",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Day (CET)"
+                },
+                "y": {
+                  "fieldName": "worst_station_ug_m3",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "µg/m³"
+                },
+                "color": {
+                  "fieldName": "city_name",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "City"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Worst station's daily mean – last 60 days"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 11,
+            "width": 6,
+            "height": 7
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "came_true",
+      "displayName": "Did it come true?",
+      "layout": [
+        {
+          "widget": {
+            "name": "text_18",
+            "multilineTextboxSpec": {
+              "lines": [
+                "# Did the official forecasts come true?\n",
+                "Each official forecast (issued at 11:30 CET the day before) next to what was measured on that day: the daily mean of the city's worst station compared with the daily limit. A warning is issued at 50% or more.\n",
+                "- ✓ *no smog, as forecast* – no warning, limit not exceeded\n",
+                "- ✓ *smog, warned in advance* – warning, limit exceeded\n",
+                "- ✗ *smog missed* – limit exceeded without a warning\n",
+                "- ✗ *false alarm* – warning, but the limit was not exceeded\n",
+                "- ⏳ *waiting* – the day is not over yet (judged after midnight CET)\n\n",
+                "The live record is short (the live feed started in October 2026); the test year 2025 on the Model page is the main evidence – this page shows the model keeps working on new data."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "table_19",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "verification_summary",
+                  "fields": [
+                    {
+                      "name": "pollutant",
+                      "expression": "`pollutant`"
+                    },
+                    {
+                      "name": "judged_forecasts",
+                      "expression": "`judged_forecasts`"
+                    },
+                    {
+                      "name": "correct_quiet",
+                      "expression": "`correct_quiet`"
+                    },
+                    {
+                      "name": "hits",
+                      "expression": "`hits`"
+                    },
+                    {
+                      "name": "misses",
+                      "expression": "`misses`"
+                    },
+                    {
+                      "name": "false_alarms",
+                      "expression": "`false_alarms`"
+                    },
+                    {
+                      "name": "live_brier",
+                      "expression": "`live_brier`"
+                    },
+                    {
+                      "name": "pending",
+                      "expression": "`pending`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "pollutant",
+                    "displayName": "Pollutant"
+                  },
+                  {
+                    "fieldName": "judged_forecasts",
+                    "displayName": "Judged forecasts"
+                  },
+                  {
+                    "fieldName": "correct_quiet",
+                    "displayName": "✓ No smog, as forecast"
+                  },
+                  {
+                    "fieldName": "hits",
+                    "displayName": "✓ Smog, warned in advance"
+                  },
+                  {
+                    "fieldName": "misses",
+                    "displayName": "✗ Smog missed"
+                  },
+                  {
+                    "fieldName": "false_alarms",
+                    "displayName": "✗ False alarms"
+                  },
+                  {
+                    "fieldName": "live_brier",
+                    "displayName": "Live Brier score (lower = better)"
+                  },
+                  {
+                    "fieldName": "pending",
+                    "displayName": "⏳ Waiting for the day to end"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Live track record"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 6,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "table_20",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "verification",
+                  "fields": [
+                    {
+                      "name": "target_day",
+                      "expression": "`target_day`"
+                    },
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "pm10_limit",
+                      "expression": "`pm10_limit`"
+                    },
+                    {
+                      "name": "pm10",
+                      "expression": "`pm10`"
+                    },
+                    {
+                      "name": "pm25_limit",
+                      "expression": "`pm25_limit`"
+                    },
+                    {
+                      "name": "pm25",
+                      "expression": "`pm25`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "target_day",
+                    "displayName": "Day"
+                  },
+                  {
+                    "fieldName": "city_name",
+                    "displayName": "City"
+                  },
+                  {
+                    "fieldName": "pm10_limit",
+                    "displayName": "PM10 daily limit"
+                  },
+                  {
+                    "fieldName": "pm10",
+                    "displayName": "PM10 – did it come true?"
+                  },
+                  {
+                    "fieldName": "pm25_limit",
+                    "displayName": "PM2.5 daily limit"
+                  },
+                  {
+                    "fieldName": "pm25",
+                    "displayName": "PM2.5 – did it come true?"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Every official forecast"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 6,
+            "height": 9
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "test_year",
+      "displayName": "Test year 2025",
+      "layout": [
+        {
+          "widget": {
+            "name": "text_21",
+            "multilineTextboxSpec": {
+              "lines": [
+                "# How the model did in 2025, month by month\n",
+                "2025 is the test year: the model never saw it while learning, and the tests on the Model page were fixed before it was checked. Each bar counts **smog days** – days when the daily limit was exceeded (the city's worst station: PM10 above 50 µg/m³, PM2.5 above 25 µg/m³) – and **false alarms**. A warning means a forecast of 50% or more.\n",
+                "**All 10 cities together** (charts with City = All, and the last table): days are summed over the cities – one smog day = one city on one day (February: 28 days × 10 cities = 280 city-days)."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "filter_22",
+            "queries": [
+              {
+                "name": "filter_city_name_test_days_pm10",
+                "query": {
+                  "datasetName": "test_days_pm10",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "city_name_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "filter_city_name_test_days_pm25",
+                "query": {
+                  "datasetName": "test_days_pm25",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "city_name_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "filter_city_name_test_months",
+                "query": {
+                  "datasetName": "test_months",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "city_name_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "city_name",
+                    "displayName": "City",
+                    "queryName": "filter_city_name_test_days_pm10"
+                  },
+                  {
+                    "fieldName": "city_name",
+                    "displayName": "City",
+                    "queryName": "filter_city_name_test_days_pm25"
+                  },
+                  {
+                    "fieldName": "city_name",
+                    "displayName": "City",
+                    "queryName": "filter_city_name_test_months"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "City"
+              },
+              "selection": {
+                "defaultSelection": {
+                  "values": {
+                    "dataType": "STRING",
+                    "values": [
+                      {
+                        "value": "Kraków"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_23",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "test_days_pm10",
+                  "fields": [
+                    {
+                      "name": "month",
+                      "expression": "`month`"
+                    },
+                    {
+                      "name": "outcome",
+                      "expression": "`outcome`"
+                    },
+                    {
+                      "name": "count(*)",
+                      "expression": "COUNT(*)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "month",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "natural-order"
+                    }
+                  },
+                  "displayName": "Month"
+                },
+                "y": {
+                  "fieldName": "count(*)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Days"
+                },
+                "color": {
+                  "fieldName": "outcome",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "natural-order"
+                    }
+                  },
+                  "displayName": "Outcome"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "PM10 – smog days caught, missed, and false alarms"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_24",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "test_days_pm25",
+                  "fields": [
+                    {
+                      "name": "month",
+                      "expression": "`month`"
+                    },
+                    {
+                      "name": "outcome",
+                      "expression": "`outcome`"
+                    },
+                    {
+                      "name": "count(*)",
+                      "expression": "COUNT(*)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "month",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "natural-order"
+                    }
+                  },
+                  "displayName": "Month"
+                },
+                "y": {
+                  "fieldName": "count(*)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Days"
+                },
+                "color": {
+                  "fieldName": "outcome",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "natural-order"
+                    }
+                  },
+                  "displayName": "Outcome"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "PM2.5 – smog days caught, missed, and false alarms"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 12,
+            "width": 6,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "text_25",
+            "multilineTextboxSpec": {
+              "lines": [
+                "**How to read the tables** – two questions, both answered as \"X of Y\":\n",
+                "- **Smog days that got a warning** – did we miss smog? Example: 16 of 19 = of 19 smog days, 16 were warned the day before. Higher is better.\n",
+                "- **Warnings followed by smog** – can you trust a warning? Example: 16 of 22 = of 22 warnings, 16 were followed by a real smog day (the other 6 were false alarms). Higher is better.\n",
+                "- A good forecast needs **both** to be high: warning every day would catch every smog day, but most warnings would be wrong.\n",
+                "- **\"Tomorrow like today\"** – the simplest possible forecast: warn if the last full day was a smog day (when the forecast is issued at 11:30, today is not over yet, so that is yesterday). The model should do better than that.\n",
+                "- Why \"tomorrow like today\" is not enough: it is always **two days late**. It misses the first two days of every smog episode and keeps warning for two days after the smog is gone. It looks fine in long episodes (a frosty February), but when smog comes in short bursts of one or two days it never catches it. The model also looks at this morning's readings and the weather forecast, so it can warn before an episode starts.\n",
+                "- Our goal, set before testing: at least 60% of smog days warned, at least half of the warnings followed by smog.\n",
+                "- Months not shown had no smog day and no warning – the model correctly stayed quiet (e.g. May–September). A dash (–) = nothing to count."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 19,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "table_26",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "test_months",
+                  "fields": [
+                    {
+                      "name": "city_name",
+                      "expression": "`city_name`"
+                    },
+                    {
+                      "name": "month",
+                      "expression": "`month`"
+                    },
+                    {
+                      "name": "pollutant",
+                      "expression": "`pollutant`"
+                    },
+                    {
+                      "name": "smog_days",
+                      "expression": "`smog_days`"
+                    },
+                    {
+                      "name": "warnings",
+                      "expression": "`warnings`"
+                    },
+                    {
+                      "name": "caught",
+                      "expression": "`caught`"
+                    },
+                    {
+                      "name": "warnings_right",
+                      "expression": "`warnings_right`"
+                    },
+                    {
+                      "name": "persistence_caught",
+                      "expression": "`persistence_caught`"
+                    },
+                    {
+                      "name": "persistence_right",
+                      "expression": "`persistence_right`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "city_name",
+                    "displayName": "City"
+                  },
+                  {
+                    "fieldName": "month",
+                    "displayName": "Month"
+                  },
+                  {
+                    "fieldName": "pollutant",
+                    "displayName": "Pollutant"
+                  },
+                  {
+                    "fieldName": "smog_days",
+                    "displayName": "Smog days"
+                  },
+                  {
+                    "fieldName": "warnings",
+                    "displayName": "Warnings issued"
+                  },
+                  {
+                    "fieldName": "caught",
+                    "displayName": "Model: smog days that got a warning"
+                  },
+                  {
+                    "fieldName": "warnings_right",
+                    "displayName": "Model: warnings followed by smog"
+                  },
+                  {
+                    "fieldName": "persistence_caught",
+                    "displayName": "\"Tomorrow like today\": smog days that got a warning"
+                  },
+                  {
+                    "fieldName": "persistence_right",
+                    "displayName": "\"Tomorrow like today\": warnings followed by smog"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Month by month in the chosen city – the model vs \"tomorrow like today\""
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 25,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "table_27",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "test_months_all",
+                  "fields": [
+                    {
+                      "name": "month",
+                      "expression": "`month`"
+                    },
+                    {
+                      "name": "pollutant",
+                      "expression": "`pollutant`"
+                    },
+                    {
+                      "name": "smog_days",
+                      "expression": "`smog_days`"
+                    },
+                    {
+                      "name": "warnings",
+                      "expression": "`warnings`"
+                    },
+                    {
+                      "name": "caught",
+                      "expression": "`caught`"
+                    },
+                    {
+                      "name": "warnings_right",
+                      "expression": "`warnings_right`"
+                    },
+                    {
+                      "name": "persistence_caught",
+                      "expression": "`persistence_caught`"
+                    },
+                    {
+                      "name": "persistence_right",
+                      "expression": "`persistence_right`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "month",
+                    "displayName": "Month"
+                  },
+                  {
+                    "fieldName": "pollutant",
+                    "displayName": "Pollutant"
+                  },
+                  {
+                    "fieldName": "smog_days",
+                    "displayName": "Smog days"
+                  },
+                  {
+                    "fieldName": "warnings",
+                    "displayName": "Warnings issued"
+                  },
+                  {
+                    "fieldName": "caught",
+                    "displayName": "Model: smog days that got a warning"
+                  },
+                  {
+                    "fieldName": "warnings_right",
+                    "displayName": "Model: warnings followed by smog"
+                  },
+                  {
+                    "fieldName": "persistence_caught",
+                    "displayName": "\"Tomorrow like today\": smog days that got a warning"
+                  },
+                  {
+                    "fieldName": "persistence_right",
+                    "displayName": "\"Tomorrow like today\": warnings followed by smog"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "All 10 cities together (not affected by the City filter)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 33,
+            "width": 6,
+            "height": 8
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "model",
+      "displayName": "Model",
+      "layout": [
+        {
+          "widget": {
+            "name": "text_28",
+            "multilineTextboxSpec": {
+              "lines": [
+                "# How good is the model?\n",
+                "Five tests were fixed **before training**. The model is trusted only if it passes all of them. Judged on 2025 – a year the model never saw."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "table_29",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "acceptance",
+                  "fields": [
+                    {
+                      "name": "pollutant",
+                      "expression": "`pollutant`"
+                    },
+                    {
+                      "name": "test",
+                      "expression": "`test`"
+                    },
+                    {
+                      "name": "required",
+                      "expression": "`required`"
+                    },
+                    {
+                      "name": "reached",
+                      "expression": "`reached`"
+                    },
+                    {
+                      "name": "result",
+                      "expression": "`result`"
+                    },
+                    {
+                      "name": "code",
+                      "expression": "`code`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "pollutant",
+                    "displayName": "Pollutant"
+                  },
+                  {
+                    "fieldName": "test",
+                    "displayName": "Test"
+                  },
+                  {
+                    "fieldName": "required",
+                    "displayName": "Required"
+                  },
+                  {
+                    "fieldName": "reached",
+                    "displayName": "Reached"
+                  },
+                  {
+                    "fieldName": "result",
+                    "displayName": "Result"
+                  },
+                  {
+                    "fieldName": "code",
+                    "displayName": "Code"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Reliability tests (test year 2025)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_30",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "brier_pm10",
+                  "fields": [
+                    {
+                      "name": "model_name",
+                      "expression": "`model_name`"
+                    },
+                    {
+                      "name": "brier",
+                      "expression": "`brier`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "model_name",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Forecast"
+                },
+                "y": {
+                  "fieldName": "brier",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Brier score"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "PM10 – Brier score, lower is better"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_31",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "brier_pm25",
+                  "fields": [
+                    {
+                      "name": "model_name",
+                      "expression": "`model_name`"
+                    },
+                    {
+                      "name": "brier",
+                      "expression": "`brier`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "model_name",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Forecast"
+                },
+                "y": {
+                  "fieldName": "brier",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Brier score"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "PM2.5 – Brier score, lower is better",
+                "showDescription": true,
+                "description": "Scales differ – compare forecasts within one pollutant, not PM10 with PM2.5."
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 8,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "scatter_32",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "reliability",
+                  "fields": [
+                    {
+                      "name": "forecast_pct",
+                      "expression": "`forecast_pct`"
+                    },
+                    {
+                      "name": "observed_pct",
+                      "expression": "`observed_pct`"
+                    },
+                    {
+                      "name": "pollutant",
+                      "expression": "`pollutant`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "scatter",
+              "encodings": {
+                "x": {
+                  "fieldName": "forecast_pct",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Forecast probability (%)"
+                },
+                "y": {
+                  "fieldName": "observed_pct",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Exceedance really happened (%)"
+                },
+                "color": {
+                  "fieldName": "pollutant",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Pollutant"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Does \"70%\" mean 70%? (bands with at least 30 days)",
+                "showDescription": true,
+                "description": "A well-calibrated model puts the points near the diagonal: forecast % ≈ observed %."
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 14,
+            "width": 6,
+            "height": 7
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "data_quality",
+      "displayName": "Data quality",
+      "layout": [
+        {
+          "widget": {
+            "name": "text_33",
+            "multilineTextboxSpec": {
+              "lines": [
+                "# Data quality of the live feed\n",
+                "*live* = GIOŚ API, *fault_replay* = demonstration with injected faults (never used by the model). Nothing is dropped silently: every set-aside reading has a reason."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "filter_34",
+            "queries": [
+              {
+                "name": "filter_source_dq",
+                "query": {
+                  "datasetName": "dq",
+                  "fields": [
+                    {
+                      "name": "source",
+                      "expression": "`source`"
+                    },
+                    {
+                      "name": "source_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "filter_source_dq_reasons",
+                "query": {
+                  "datasetName": "dq_reasons",
+                  "fields": [
+                    {
+                      "name": "source",
+                      "expression": "`source`"
+                    },
+                    {
+                      "name": "source_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "source",
+                    "displayName": "Source",
+                    "queryName": "filter_source_dq"
+                  },
+                  {
+                    "fieldName": "source",
+                    "displayName": "Source",
+                    "queryName": "filter_source_dq_reasons"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Source"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "bar_35",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "dq_reasons",
+                  "fields": [
+                    {
+                      "name": "reason",
+                      "expression": "`reason`"
+                    },
+                    {
+                      "name": "value",
+                      "expression": "`value`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "reason",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Reason"
+                },
+                "y": {
+                  "fieldName": "value",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Readings"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Readings set aside or flagged"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "table_36",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "dq",
+                  "fields": [
+                    {
+                      "name": "source",
+                      "expression": "`source`"
+                    },
+                    {
+                      "name": "measure",
+                      "expression": "`measure`"
+                    },
+                    {
+                      "name": "value",
+                      "expression": "`value`"
+                    },
+                    {
+                      "name": "pct_of_unique",
+                      "expression": "`pct_of_unique`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "source",
+                    "displayName": "Source"
+                  },
+                  {
+                    "fieldName": "measure",
+                    "displayName": "Measure"
+                  },
+                  {
+                    "fieldName": "value",
+                    "displayName": "Count"
+                  },
+                  {
+                    "fieldName": "pct_of_unique",
+                    "displayName": "% of unique readings"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "All measures"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 6,
+            "height": 8
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    }
+  ]
+}
