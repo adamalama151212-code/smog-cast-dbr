@@ -61,6 +61,9 @@ variables:
   env:
     description: "smogcast configuration environment (dev | prod)"
     default: dev
+  jobs_principal:
+    # Set per target. One value for `run_as` and for the owner of the Jobs and the pipeline.
+    description: "Application (client) id of the service principal that runs and owns the Jobs and the pipeline"
   node_type:
     # Set per target: DEV and PROD are workspaces on different Azure accounts, and VM availability depends
     # on the region and the subscription's per-family vCPU quota.
@@ -93,18 +96,45 @@ targets:
     workspace:
       host: https://adb-7405617572397835.15.azuredatabricks.net   # dbw-smogcast-dev (workspace id 7405617572397835)
       root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}   # the same deployment for every deployer
-    # sp-smogcast-dev (Terraform module `identity`, output jobs_service_principal_application_id)
     run_as:
-      service_principal_name: bd4c1f08-eef6-4502-bfef-76ef72b2f2a6
+      service_principal_name: ${var.jobs_principal}
     # Both deployers manage every resource of the bundle, so CI (logged in as the principal) can update what a laptop
     # deploy created and the other way round. smogcast-admins = the Terraform group the author is in.
     permissions:
-      - service_principal_name: bd4c1f08-eef6-4502-bfef-76ef72b2f2a6
-        level: CAN_MANAGE
       - group_name: smogcast-admins
         level: CAN_MANAGE
+    # The owner is named here, not left to the bundle: without it the bundle makes whoever deploys the owner, and
+    # only a workspace admin may change the owner of a Job or a pipeline – so CI, deploying as the principal, was
+    # refused on everything a laptop deploy had created ("only workspace admins can change the owner of a job").
+    # A dashboard has no owner level; there the principal gets CAN_MANAGE.
+    resources:
+      jobs:
+        smogcast_batch:
+          permissions:
+            - service_principal_name: ${var.jobs_principal}
+              level: IS_OWNER
+        smogcast_live:
+          permissions:
+            - service_principal_name: ${var.jobs_principal}
+              level: IS_OWNER
+        smogcast_fault_demo:
+          permissions:
+            - service_principal_name: ${var.jobs_principal}
+              level: IS_OWNER
+      pipelines:
+        smogcast_stream:
+          permissions:
+            - service_principal_name: ${var.jobs_principal}
+              level: IS_OWNER
+      dashboards:
+        smogcast:
+          permissions:
+            - service_principal_name: ${var.jobs_principal}
+              level: CAN_MANAGE
     variables:
       env: dev
+      # sp-smogcast-dev (Terraform module `identity`, output jobs_service_principal_application_id)
+      jobs_principal: bd4c1f08-eef6-4502-bfef-76ef72b2f2a6
       catalog: smogcast_dev
       # DC4as_v5 (4 vCPU, 16 GB): had capacity in Germany West Central when D4ds_v5 failed with
       # CLOUD_PROVIDER_RESOURCE_STOCKOUT (2026-10-06). The trial subscription allows 4 vCPUs in the region, so only
@@ -121,8 +151,9 @@ targets:
       host: https://adb-YYYYYYYYYYYYYYY.Y.azuredatabricks.net   # TODO: PROD workspace URL
     # Jobs on PROD run as a service principal, never as the person who happened to deploy.
     run_as:
-      service_principal_name: 00000000-0000-0000-0000-000000000000   # TODO: application (client) id of the SP
+      service_principal_name: ${var.jobs_principal}
     variables:
       env: prod
+      jobs_principal: 00000000-0000-0000-0000-000000000000   # TODO: application (client) id of the SP
       catalog: smogcast_prod   # TODO: the catalog agreed with the course
       node_type: Standard_DC4as_v5   # TODO: check what the course's PROD workspace offers (region, quota)

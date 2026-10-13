@@ -578,7 +578,7 @@ delta-spark only locally and in CI; the wheels do not pull them, Databricks has 
 | where | Docker on a laptop | an Azure Databricks workspace in the author's subscription (Germany West Central, Hybrid) | a workspace on the course's account |
 | storage | `data/delta/…` (`storage.mode: path`) | `smogcast_dev.<layer>.<table>`, volumes `smogcast_dev.raw.*` | `smogcast_prod…` |
 | runs the steps | `smogcast run-…` | Lakeflow Jobs from the bundle (one shared copy in `/Workspace/Shared`, names `[dev] …`) | the same Jobs (`mode: production`) |
-| identity of the Jobs | – | service principal `sp-smogcast-dev` (`run_as`); it owns the tables, admins read | a service principal (`run_as`) |
+| identity of the Jobs | – | service principal `sp-smogcast-dev`: the Jobs and the pipeline run as it (`run_as`) and belong to it (`IS_OWNER` in the bundle); it owns the tables, admins read | a service principal (`run_as`) |
 | deploys | – | `databricks bundle deploy -t dev` from a laptop (the group `smogcast-admins` holds the Service Principal User role) or CI as the principal | **CI only** (GitHub Actions) |
 | state | ✅ | ✅ rebuilt from scratch on a new subscription on 2026-10-12, model identical | 🔜 |
 
@@ -623,7 +623,9 @@ What a workspace built from scratch taught (2026-10-12): the workspace must be o
 workspace has no classic clusters for the Jobs); whoever deploys a Job that runs as a principal needs the **Service
 Principal User** role on it, being a workspace admin is not enough; the pipeline's identity needs
 **`CREATE_MATERIALIZED_VIEW`**; everything that used to work "because the author owned the tables" has to be granted
-to the principal explicitly.
+to the principal explicitly. The first deploy from CI (2026-10-13) added one more: a bundle makes whoever deploys the
+**owner** of its Jobs and pipelines, and only a workspace admin may change an owner – so the owner is named in the
+bundle (the principal), and a laptop and CI can both deploy the same copy.
 
 **PROD (course account, shared):** common objects of the course (its catalog, Key Vault, service principal,
 warehouse) are only referenced, never created, imported or resized; no own principal and no account groups there –
