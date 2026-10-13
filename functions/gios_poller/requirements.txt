@@ -1,0 +1,5 @@
+# Azure side of the function. The smogcast wheels (smogcast-core, smogcast-ingest) are built from the repo and
+# installed next to these by build.sh — the zip carries every package, no build on Azure.
+azure-functions>=1.21
+azure-identity>=1.17
+azure-storage-blob>=12.20
