@@ -42,6 +42,28 @@ def test_bundle_catalog_matches_the_environment_config():
         assert v["catalog"] == load_config(v["env"])["storage"]["catalog"], v
 
 
+def test_dev_names_the_owner_of_every_job_and_pipeline():
+    # Left to the bundle, the owner is whoever deploys, and only a workspace admin may change it: CI (the principal)
+    # was refused on Jobs a laptop deploy had created. A new Job or pipeline must get the same entry.
+    from pathlib import Path
+
+    import yaml
+
+    root = Path(__file__).resolve().parents[3]
+    dev = yaml.safe_load((root / "databricks.yml").read_text(encoding="utf-8"))["targets"]["dev"]
+    owner = [{"service_principal_name": "${var.jobs_principal}", "level": "IS_OWNER"}]
+    assert dev["run_as"] == {"service_principal_name": "${var.jobs_principal}"}
+    for kind in ("jobs", "pipelines"):
+        declared = set()
+        for f in (root / "resources").glob("*.yml"):
+            declared |= set(yaml.safe_load(f.read_text(encoding="utf-8"))["resources"].get(kind, {}))
+        assert declared and set(dev["resources"][kind]) == declared, kind
+        for name, resource in dev["resources"][kind].items():
+            assert resource["permissions"] == owner, name
+    # one entry per principal: the owner is not listed again among the target's managers
+    assert all("service_principal_name" not in p for p in dev["permissions"])
+
+
 @pytest.mark.parametrize("job_file", ["job_smogcast.yml", "job_smogcast_live.yml", "job_smogcast_fault_demo.yml"])
 def test_every_job_task_retries_and_a_failed_run_sends_an_email(job_file):
     from pathlib import Path
