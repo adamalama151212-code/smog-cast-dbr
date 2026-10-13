@@ -169,6 +169,9 @@ targets:
       schema_prefix: smogcast_
       # D4ds_v5 (4 vCPU, 16 GB, about 1 DBU): on the course's list of allowed types; small clusters only (up to 2 DBU).
       node_type: Standard_D4ds_v5
+      # The live Job runs by itself 3 times a day (since 2026-10-13, after its first run by hand): every day without
+      # it is a day without an official forecast to compare with what was measured.
+      live_trigger_pause_status: UNPAUSED
     resources:
       schemas:
         bronze: {catalog_name: "${var.catalog}", name: "${var.schema_prefix}bronze", comment: "smogcast – raw data as delivered"}
