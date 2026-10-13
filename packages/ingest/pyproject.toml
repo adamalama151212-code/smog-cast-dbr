@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "smogcast-ingest"
-version = "0.1.0"  # x-release-please-version (must equal ../../VERSION, checked by a test)
+version = "0.2.0"  # x-release-please-version (must equal ../../VERSION, checked by a test)
 description = "smogcast step: raw data into the landing zone"
 requires-python = ">=3.10,<3.13"
 dependencies = [
-    "smogcast-core==0.1.0",  # x-release-please-version
+    "smogcast-core==0.2.0",  # x-release-please-version
     "requests>=2.31",
     # Writes GIOŚ-format xlsx sheets for the synthetic archive (integration tests, CI, --offline).
     "openpyxl>=3.1",

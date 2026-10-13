@@ -7,17 +7,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "smogcast-cli"
-version = "0.1.0"  # x-release-please-version (must equal ../../VERSION, checked by a test)
+version = "0.2.0"  # x-release-please-version (must equal ../../VERSION, checked by a test)
 description = "smogcast local command line: runs pipeline steps from all step wheels"
 requires-python = ">=3.10,<3.13"
 dependencies = [
-    "smogcast-core==0.1.0",  # x-release-please-version
-    "smogcast-ingest==0.1.0",  # x-release-please-version
-    "smogcast-bronze==0.1.0",  # x-release-please-version
-    "smogcast-silver-clean==0.1.0",  # x-release-please-version
-    "smogcast-silver-transform==0.1.0",  # x-release-please-version
-    "smogcast-model==0.1.0",  # x-release-please-version
-    "smogcast-gold==0.1.0",  # x-release-please-version
+    "smogcast-core==0.2.0",  # x-release-please-version
+    "smogcast-ingest==0.2.0",  # x-release-please-version
+    "smogcast-bronze==0.2.0",  # x-release-please-version
+    "smogcast-silver-clean==0.2.0",  # x-release-please-version
+    "smogcast-silver-transform==0.2.0",  # x-release-please-version
+    "smogcast-model==0.2.0",  # x-release-please-version
+    "smogcast-gold==0.2.0",  # x-release-please-version
 ]
 
 [project.scripts]
