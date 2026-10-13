@@ -1,0 +1,66 @@
+# =============================================================================
+# CI: lint, unit tests and the integration test on every commit of a pull request.
+#
+# The integration test runs the whole pipeline on synthetic inputs written in the real
+# source formats (smogcast.ingest.synthetic), so CI needs no access to GIOŚ or Open-Meteo.
+#
+# Deployment is a separate, manually started workflow (deploy.yml):
+# it picks the branch and the target environment and does not re-run the tests. Wheels are
+# built there by `databricks bundle deploy` (artifacts in databricks.yml), not here.
+# =============================================================================
+name: ci
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+# A newer commit in the same pull request makes the older run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TZ: UTC   # the same hours as in Docker and on the cluster (smogcast/core/session.py)
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          # There is no requirements.txt, which is what the pip cache looks for by default.
+          cache-dependency-path: |
+            requirements-dev.txt
+            packages/*/pyproject.toml
+
+      # Spark 4 needs Java 17+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install all packages (editable)
+        run: |
+          pip install -r requirements-dev.txt
+          # core[local] = PySpark + delta-spark; the wheels themselves do not pull them (Databricks has both)
+          pip install -e "packages/core[local]" -e packages/ingest -e packages/bronze -e packages/silver_clean \
+                      -e packages/silver_transform -e packages/model -e packages/gold -e packages/cli
+
+      - name: Lint (ruff)
+        run: ruff check packages pipelines functions conftest.py
+
+      # Delta jars cache (Ivy) — saves the Maven Central download on every run
+      - uses: actions/cache@v4
+        with:
+          path: ~/.ivy2.5.2
+          key: ivy-delta-4.0-${{ hashFiles('packages/core/pyproject.toml') }}
+
+      - name: Unit tests
+        run: pytest -q -m "not integration"
+
+      - name: Integration test (whole pipeline on synthetic data)
+        run: pytest -q -m integration
