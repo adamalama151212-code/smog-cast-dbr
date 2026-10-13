@@ -1,0 +1,126 @@
+# =============================================================================
+# Deploy: the Databricks bundle (wheels, Jobs, pipeline, dashboard) and the GIOŚ poller Azure Function.
+#
+# The path of a change:
+#   1. pull request  – ci.yml tests it; to try it on DEV: Actions → deploy → "Use workflow from" = the branch → dev
+#   2. merge to main – release-please.yml updates the release PR (next version + CHANGELOG)
+#   3. release PR merged → tag vX.Y.Z → release-please.yml calls this workflow: the tag goes to DEV
+#   4. the same tag to PROD by hand: "Use workflow from" = the tag → prod, approved on the GitHub Environment "prod"
+# PROD takes only release tags (v*), never a branch, so it always runs a version that was on DEV first.
+# Tests are not re-run here – ci.yml runs them on every pull request.
+#
+# Identity: the Jobs' service principal (Terraform module `identity`), logged in through OIDC – GitHub's token for
+# this job is exchanged for an Entra ID token, so there is no password or client secret anywhere.
+# Settings come from the GitHub Environment (dev / prod → Variables); they are ids, not secrets:
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID   – `terraform output` (identity) and the subscription
+#   FUNCTION_RESOURCE_GROUP, FUNCTION_APP_NAME                  – optional: without them the function is skipped
+# How CI logs in on the course's PROD is still open.
+# =============================================================================
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Where to deploy what is picked in \"Use workflow from\" (prod: a release tag only)"
+        type: choice
+        options: [dev, prod]
+        default: dev
+      deploy_function:
+        description: "Also upload the Azure Function code (GIOŚ poller)"
+        type: boolean
+        default: true
+  workflow_call:   # release-please.yml: a new release tag goes to DEV
+    inputs:
+      environment:
+        type: string
+        required: true
+      ref:
+        description: "Branch or tag to deploy"
+        type: string
+        required: true
+      deploy_function:
+        type: boolean
+        default: true
+
+permissions:
+  id-token: write   # the OIDC token for the Azure login
+  contents: read
+
+# Two deploys to the same environment must not interleave; a running deploy is never cancelled halfway.
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: ${{ inputs.environment }}
+    env:
+      TARGET: ${{ inputs.environment }}
+      REF: ${{ inputs.ref || github.ref }}
+    steps:
+      - name: PROD only from a release tag
+        if: inputs.environment == 'prod'
+        run: |
+          case "$REF" in
+            refs/tags/v*|v*) echo "deploying release ${REF#refs/tags/} to PROD" ;;
+            *) echo "::error::PROD takes only a release tag (v*), not ${REF}"; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.REF }}
+
+      # 3.11 = the Azure Function's runtime (its zip vendors binary wheels) and the version CI tests with.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install the wheel builder
+        run: pip install build   # the bundle's artifacts and build.sh run `python -m build --wheel`
+
+      # The same CLI version as on the author's laptop, so `bundle validate` behaves the same here and there.
+      - uses: databricks/setup-cli@v1.19.0
+
+      - name: Log in to Azure (OIDC, no secret)
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # One Entra ID token for Databricks, taken right after the login: GitHub's OIDC token expires within minutes,
+      # this one lasts about an hour – longer than the deploy. 2ff814a6-… = the AzureDatabricks application.
+      - name: Databricks token
+        run: |
+          token=$(az account get-access-token --resource 2ff814a6-3304-4ab8-85cb-cd0e6f879c1d --query accessToken -o tsv)
+          echo "::add-mask::${token}"
+          echo "DATABRICKS_TOKEN=${token}" >> "$GITHUB_ENV"
+
+      - name: Bundle validate
+        run: databricks bundle validate -t "$TARGET"
+
+      - name: Bundle deploy
+        run: databricks bundle deploy -t "$TARGET"
+
+      - name: Build the function package
+        if: inputs.deploy_function && vars.FUNCTION_APP_NAME != ''
+        run: bash functions/gios_poller/build.sh
+
+      - name: Upload the function code
+        if: inputs.deploy_function && vars.FUNCTION_APP_NAME != ''
+        run: |
+          az functionapp deployment source config-zip \
+            -g "${{ vars.FUNCTION_RESOURCE_GROUP }}" -n "${{ vars.FUNCTION_APP_NAME }}" \
+            --src functions/gios_poller/dist/gios_poller.zip
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Deploy to \`${TARGET}\` – ${{ job.status }}"
+            echo "- \`${REF}\` (commit \`$(git rev-parse --short HEAD 2>/dev/null || echo ?)\`)"
+            echo "- function uploaded: ${{ inputs.deploy_function && vars.FUNCTION_APP_NAME != '' }}"
+          } >> "$GITHUB_STEP_SUMMARY"

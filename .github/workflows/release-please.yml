@@ -1,0 +1,46 @@
+# =============================================================================
+# Releases (release-please): every merge to main updates one "release PR" – the next version, worked out from the
+# conventional commit messages (feat: → minor, fix: → patch; before 1.0 a feat still bumps only the minor), and the
+# CHANGELOG. Merging that PR bumps VERSION and every wheel (release-please-config.json), tags the commit (v0.2.0)
+# and creates a GitHub release – then the tag is deployed to DEV right away.
+# PROD gets the same tag later, by hand: Actions → deploy → "Use workflow from" = the tag → environment prod
+# (approval on the GitHub Environment "prod").
+#
+# Repo setting needed once: Settings → Actions → General → "Allow GitHub Actions to create and approve pull
+# requests". A release PR opened with GITHUB_TOKEN does not start ci.yml – it only changes versions and the
+# CHANGELOG, everything else was tested in the pull requests it collects.
+# =============================================================================
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write        # tag and GitHub release
+  pull-requests: write   # the release PR
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v5.0.0
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # A tag pushed with GITHUB_TOKEN starts no other workflow, so the DEV deploy of a new release is called from here.
+  deploy-dev:
+    needs: release
+    if: needs.release.outputs.release_created == 'true'
+    permissions:
+      id-token: write
+      contents: read
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: dev
+      ref: ${{ needs.release.outputs.tag_name }}

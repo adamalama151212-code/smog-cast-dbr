@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bump-minor-pre-major": true,
+  "include-component-in-tag": false,
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "smogcast",
+      "version-file": "VERSION",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {"type": "generic", "path": "packages/core/pyproject.toml"},
+        {"type": "generic", "path": "packages/ingest/pyproject.toml"},
+        {"type": "generic", "path": "packages/bronze/pyproject.toml"},
+        {"type": "generic", "path": "packages/silver_clean/pyproject.toml"},
+        {"type": "generic", "path": "packages/silver_transform/pyproject.toml"},
+        {"type": "generic", "path": "packages/model/pyproject.toml"},
+        {"type": "generic", "path": "packages/gold/pyproject.toml"},
+        {"type": "generic", "path": "packages/cli/pyproject.toml"}
+      ]
+    }
+  }
+}
