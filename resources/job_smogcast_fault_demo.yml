@@ -1,0 +1,104 @@
+# =============================================================================
+# Lakeflow Job — fault-injection demo (E9 point 4). Started BY HAND only (no schedule); ~15 min, ~8 of them the
+# cluster start — run it before a presentation and show its results (ARCHITECTURE.md, section 3a).
+#
+# Real archive measurements (Kraków, window in conf/fault_injection.yaml) are replayed as a stream with faults
+# injected on a schedule; every fault must end where it should (late / quarantine with the reason / dedup / flags,
+# a registry change in the CDC feed) and the real smog episode must stay unflagged. Each run starts from scratch.
+#
+# The task graph mirrors FAULT_DEMO_ORDER in packages/cli/src/smogcast/cli/main.py (`smogcast run-fault-demo`) —
+# keep both in sync (packages/cli/tests/test_cli.py). On Databricks the stream tables belong to the declarative
+# pipeline (storage.stream_tables_owner in conf/<env>.yaml): fault-reset removes only the demo's files and registry
+# rows, and the FULL refresh of the pipeline rebuilds the stream tables from the landing files — the live polls'
+# files stay, so the live data are recomputed too (~1.5 min), nothing is lost.
+# Do not start it around the live Job's runs (10:30, 16:30, 23:30 UTC): both refresh the same pipeline.
+# =============================================================================
+resources:
+  jobs:
+    smogcast_fault_demo:
+      name: smogcast-fault-demo-${var.env}
+
+      # After the retries are used up, a failed run e-mails the address in databricks.yml (var.notification_email).
+      email_notifications:
+        on_failure: ["${var.notification_email}"]
+
+      max_concurrent_runs: 1   # two demos at once would remove each other's files
+
+      job_clusters:
+        - job_cluster_key: demo
+          new_cluster:
+            spark_version: 17.3.x-scala2.13   # DBR 17 = Spark 4.0 (as locally) — 17.3 LTS
+            # per target (databricks.yml, variable node_type)
+            node_type_id: ${var.node_type}
+            num_workers: 0                    # single node: a few thousand demo rows
+            spark_conf:
+              spark.master: "local[*]"
+              spark.databricks.cluster.profile: singleNode
+            custom_tags: {ResourceClass: SingleNode}
+            # Required for Unity Catalog; the cluster belongs to the Job's run-as identity (as in the other Jobs).
+            data_security_mode: SINGLE_USER
+            spark_env_vars:
+              SMOGCAST_ENV: ${var.env}
+
+      tasks:
+        - task_key: fault_reset
+          # Every task: 2 retries 10 min apart, 30 min limit. The same four lines on every task (test_cli checks it).
+          max_retries: 2
+          min_retry_interval_millis: 600000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+          job_cluster_key: demo
+          python_wheel_task: {package_name: smogcast_silver_clean, entry_point: smogcast-silver-clean, parameters: ["--step", "fault-reset", "--env", "${var.env}"]}
+          libraries: [{whl: ../packages/core/dist/*.whl}, {whl: ../packages/silver_clean/dist/*.whl}]
+
+        # Real hourly values from bronze.pm_hourly (the batch Job) → batch files with injected faults + registry
+        # snapshots with a station removed and a sensor added (landing/fault_replay, landing/fault_replay_registry).
+        - task_key: fault_replay
+          max_retries: 2
+          min_retry_interval_millis: 600000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+          depends_on: [{task_key: fault_reset}]
+          job_cluster_key: demo
+          python_wheel_task: {package_name: smogcast_ingest, entry_point: smogcast-ingest, parameters: ["--step", "fault-replay", "--env", "${var.env}"]}
+          libraries: [{whl: ../packages/core/dist/*.whl}, {whl: ../packages/ingest/dist/*.whl}]
+
+        # --- registry change data capture (the replay's snapshots next to the real ones) ---
+        - task_key: bronze_station_snapshots
+          max_retries: 2
+          min_retry_interval_millis: 600000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+          depends_on: [{task_key: fault_replay}]
+          job_cluster_key: demo
+          python_wheel_task: {package_name: smogcast_bronze, entry_point: smogcast-bronze, parameters: ["--step", "station-snapshots", "--env", "${var.env}"]}
+          libraries: [{whl: ../packages/core/dist/*.whl}, {whl: ../packages/bronze/dist/*.whl}]
+
+        - task_key: silver_stations_scd2
+          max_retries: 2
+          min_retry_interval_millis: 600000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+          depends_on: [{task_key: bronze_station_snapshots}]
+          job_cluster_key: demo
+          python_wheel_task: {package_name: smogcast_silver_clean, entry_point: smogcast-silver-clean, parameters: ["--step", "stations-scd2", "--env", "${var.env}"]}
+          libraries: [{whl: ../packages/core/dist/*.whl}, {whl: ../packages/silver_clean/dist/*.whl}]
+
+        # --- stream cleaning: FULL refresh = the stream tables rebuilt from every landing file, demo included ---
+        - task_key: stream_pipeline
+          max_retries: 2
+          min_retry_interval_millis: 600000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+          depends_on: [{task_key: silver_stations_scd2}]
+          pipeline_task: {pipeline_id: "${resources.pipelines.smogcast_stream.id}", full_refresh: true}
+
+        - task_key: gold_dq_summary
+          max_retries: 2
+          min_retry_interval_millis: 600000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+          depends_on: [{task_key: stream_pipeline}]
+          job_cluster_key: demo
+          python_wheel_task: {package_name: smogcast_gold, entry_point: smogcast-gold, parameters: ["--step", "dq-summary", "--env", "${var.env}"]}
+          libraries: [{whl: ../packages/core/dist/*.whl}, {whl: ../packages/gold/dist/*.whl}]

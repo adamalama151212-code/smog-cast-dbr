@@ -1,0 +1,40 @@
+# =============================================================================
+# Declarative Lakeflow pipeline — the live PM stream (stage E9; course requirement).
+#
+# Auto Loader reads the poll files from the landing volume, expectations judge every reading and
+# the cleaned tables are materialized views (pipelines/smogcast_stream/transformations/stream.py).
+# The table definitions come from the smogcast-silver-clean wheel — the same code as the local step
+# `smogcast-silver-clean --step pm-stream`.
+#
+# Triggered (not continuous): the hourly live Job refreshes it (task stream_pipeline in
+# resources/job_smogcast_live.yml). A FULL refresh re-reads every landing file — that is how the
+# fault demo is reset (its files are removed, the live polls stay).
+# =============================================================================
+resources:
+  pipelines:
+    smogcast_stream:
+      name: smogcast-stream-${var.env}
+      # Default catalog/schema of the pipeline; the tables themselves are named in full
+      # (<catalog>.bronze|silver|ops.<table>, from conf/<env>.yaml), one pipeline publishing to several schemas.
+      catalog: ${var.catalog}
+      schema: silver
+      # Serverless: the bundle installs our wheels through `environment` (below). On a workspace without
+      # serverless pipelines, a target overrides this with `serverless: false` + `clusters` (see databricks.yml).
+      serverless: true
+      continuous: false
+      channel: CURRENT
+      root_path: ../pipelines/smogcast_stream
+      libraries:
+        - glob:
+            include: ../pipelines/smogcast_stream/transformations/**
+      environment:
+        dependencies:
+          - ../packages/core/dist/*.whl
+          - ../packages/silver_clean/dist/*.whl
+      configuration:
+        smogcast.env: ${var.env}
+      # Run inside a Job (task stream_pipeline) a failure is covered by the Job's retries and e-mail; these e-mails
+      # cover an update started on its own (a manual full refresh).
+      notifications:
+        - email_recipients: ["${var.notification_email}"]
+          alerts: [on-update-failure, on-update-fatal-failure, on-flow-failure]

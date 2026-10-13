@@ -1,0 +1,128 @@
+# =============================================================================
+# Databricks Asset Bundle of smogcast.
+#
+# Every pipeline step is its own wheel (decision D14): one artifact per package,
+# and each Job task installs smogcast-core plus the wheel of its step.
+# `--env dev|prod` selects the configuration (Unity Catalog + volume instead of the
+# local `data/` directory), so transformation code does not change.
+#
+# Before the first `databricks bundle deploy` on a workspace:
+#   1. the infrastructure from the Terraform repo (catalog, schemas, volumes, the Jobs' service principal),
+#   2. `workspace.host` and `run_as` of the target — values from `terraform output`.
+# Identity: every Job runs as the target's service principal (`run_as`), whoever deploys — a laptop or CI.
+# Its single-user clusters carry no user name of their own: Databricks assigns them to the Job's run-as identity.
+# =============================================================================
+bundle:
+  name: smogcast
+
+include:
+  - resources/*.yml
+
+# What lands in <bundle>/files on the workspace. Jobs need none of it — they install the wheels from
+# `artifacts`, uploaded separately — so only the declarative pipeline's source goes up, not the whole
+# repository (docs, Docker files). Add a path here when a resource needs source files.
+sync:
+  paths:
+    - pipelines
+
+artifacts:
+  core:
+    type: whl
+    path: ./packages/core
+    build: python -m build --wheel
+  ingest:
+    type: whl
+    path: ./packages/ingest
+    build: python -m build --wheel
+  bronze:
+    type: whl
+    path: ./packages/bronze
+    build: python -m build --wheel
+  silver_clean:
+    type: whl
+    path: ./packages/silver_clean
+    build: python -m build --wheel
+  silver_transform:
+    type: whl
+    path: ./packages/silver_transform
+    build: python -m build --wheel
+  model:
+    type: whl
+    path: ./packages/model
+    build: python -m build --wheel
+  gold:
+    type: whl
+    path: ./packages/gold
+    build: python -m build --wheel
+  # The app (panel + assistant) is not part of this bundle: it has its own repository, is hosted outside the
+  # Jobs and reads the secure gold views through a SQL Warehouse.
+
+variables:
+  env:
+    description: "smogcast configuration environment (dev | prod)"
+    default: dev
+  node_type:
+    # Set per target: DEV and PROD are workspaces on different Azure accounts, and VM availability depends
+    # on the region and the subscription's per-family vCPU quota.
+    description: "Azure VM type of the single-node Job clusters"
+  catalog:
+    # Must equal storage.catalog in conf/<env>.yaml (the pipeline names its tables from that file).
+    description: "Unity Catalog catalog of the environment (default catalog of the declarative pipeline)"
+  live_trigger_pause_status:
+    # The live Job's schedule (resources/job_smogcast_live.yml). PAUSED unless a target turns it on.
+    description: "PAUSED | UNPAUSED — automatic runs of the live Job"
+    default: PAUSED
+  warehouse_id:
+    # SQL Warehouse of the dashboard, found by NAME, so a new workspace needs no id in the code (every new Azure
+    # Databricks workspace has this serverless warehouse; the course's PROD workspace too).
+    description: "SQL Warehouse that runs the dashboard's queries"
+    lookup:
+      warehouse: "Serverless Starter Warehouse"
+  notification_email:
+    # Where a FAILED Job run is reported (after its tasks' retries) — the author's address.
+    description: "E-mail address for failed Job runs"
+    default: adamalama152001@gmail.com
+
+targets:
+  dev:
+    default: true
+    # No `mode: development`: that mode gives every deployer a private copy. DEV is ONE copy, deployed from a
+    # laptop or by CI ("deploy my branch to dev") — the same folder, the same Jobs, always run by the principal.
+    presets:
+      name_prefix: "[dev] "
+    workspace:
+      host: https://adb-7405617572397835.15.azuredatabricks.net   # dbw-smogcast-dev (workspace id 7405617572397835)
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}   # the same deployment for every deployer
+    # sp-smogcast-dev (Terraform module `identity`, output jobs_service_principal_application_id)
+    run_as:
+      service_principal_name: bd4c1f08-eef6-4502-bfef-76ef72b2f2a6
+    # Both deployers manage every resource of the bundle, so CI (logged in as the principal) can update what a laptop
+    # deploy created and the other way round. smogcast-admins = the Terraform group the author is in.
+    permissions:
+      - service_principal_name: bd4c1f08-eef6-4502-bfef-76ef72b2f2a6
+        level: CAN_MANAGE
+      - group_name: smogcast-admins
+        level: CAN_MANAGE
+    variables:
+      env: dev
+      catalog: smogcast_dev
+      # DC4as_v5 (4 vCPU, 16 GB): had capacity in Germany West Central when D4ds_v5 failed with
+      # CLOUD_PROVIDER_RESOURCE_STOCKOUT (2026-10-06). The trial subscription allows 4 vCPUs in the region, so only
+      # one Job cluster runs at a time.
+      node_type: Standard_DC4as_v5
+      # The live Job runs by itself 3 times a day on DEV (decision of the author, 2026-10-07).
+      live_trigger_pause_status: UNPAUSED
+
+  prod:
+    # mode: production — the bundle refuses deploys from a laptop with uncommitted changes;
+    # PROD is deployed ONLY by CI.
+    mode: production
+    workspace:
+      host: https://adb-YYYYYYYYYYYYYYY.Y.azuredatabricks.net   # TODO: PROD workspace URL
+    # Jobs on PROD run as a service principal, never as the person who happened to deploy.
+    run_as:
+      service_principal_name: 00000000-0000-0000-0000-000000000000   # TODO: application (client) id of the SP
+    variables:
+      env: prod
+      catalog: smogcast_prod   # TODO: the catalog agreed with the course
+      node_type: Standard_DC4as_v5   # TODO: check what the course's PROD workspace offers (region, quota)

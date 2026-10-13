@@ -1,0 +1,196 @@
+# =============================================================================
+# Lakeflow Job — live path (stream cleaning, station registry CDC, tomorrow's forecast).
+# Runs 3 times a day (schedule below); on/off per target with the variable live_trigger_pause_status.
+#
+# One task = one step = one wheel (decision D14). The task graph mirrors LIVE_ORDER in
+# packages/cli/src/smogcast/cli/main.py — keep both in sync. Needs a trained model
+# (the batch job, resources/job_smogcast.yml) before the first forecast.
+#
+# The GIOŚ API is polled OUTSIDE Databricks: an Azure Function (functions/gios_poller, infrastructure in the
+# Terraform repo) writes a registry snapshot and a live batch every hour (:25 UTC) to the external volume
+# raw.landing_live. The files wait there; every run of this Job processes all batches since the previous run
+# (Auto Loader, exactly once), so running 3 times a day loses nothing and starts the cluster 3 times, not 24.
+# Locally the same two polls are the steps `ingest gios-registry` and `ingest gios-live` (LIVE_ORDER).
+# Stream cleaning runs in the declarative Lakeflow pipeline smogcast-stream (task stream_pipeline).
+# =============================================================================
+resources:
+  jobs:
+    smogcast_live:
+      name: smogcast-live-${var.env}
+
+      # Three runs a day, 5 min after the function's :25 poll, in UTC = fixed CET (the project's day is CET all year,
+      # D13 — a Europe/Warsaw schedule would drift against it with daylight saving time):
+      #   10:30 UTC = 11:30 CET  OFFICIAL forecast: every model input is complete (yesterday, the morning 00–10 CET
+      #                          ending 11:00 CET) and the run ends before the 12:00 CET issue time (D6)
+      #   16:30 UTC = 17:30 CET  update during the day: fresher readings and weather forecast
+      #   23:30 UTC = 00:30 CET  closes the day: complete daily means of yesterday (forecast verification, DQ)
+      # Polish wall clock: summer 12:30 / 18:30 / 01:30, winter 11:30 / 17:30 / 00:30.
+      # The explicit pause_status wins over development mode, which would pause it on every deploy.
+      schedule:
+        quartz_cron_expression: "0 30 10,16,23 * * ?"
+        timezone_id: UTC
+        pause_status: ${var.live_trigger_pause_status}
+
+      # After the retries are used up, a failed run e-mails the address in databricks.yml (var.notification_email).
+      email_notifications:
+        on_failure: ["${var.notification_email}"]
+
+      max_concurrent_runs: 1   # two overlapping runs would share the stream checkpoint
+
+      job_clusters:
+        - job_cluster_key: live
+          new_cluster:
+            spark_version: 17.3.x-scala2.13   # DBR 17 = Spark 4.0 (as locally) — 17.3 LTS
+            # per target (databricks.yml, variable node_type)
+            node_type_id: ${var.node_type}
+            num_workers: 0                    # single node: the live data is a few thousand rows
+            spark_conf:
+              spark.master: "local[*]"
+              spark.databricks.cluster.profile: singleNode
+            custom_tags: {ResourceClass: SingleNode}
+            # Required for Unity Catalog. No single_user_name: Databricks assigns the cluster to the identity the Job
+            # runs as (run_as in databricks.yml), whoever deployed the bundle.
+            data_security_mode: SINGLE_USER
+            spark_env_vars:
+              SMOGCAST_ENV: ${var.env}
+
+      tasks:
+        # --- station registry (CDC); the snapshots are written by the Azure Function ---
+        - task_key: bronze_station_snapshots
+          # Every task: 2 retries 10 min apart (a flaky source, no VM for the cluster), 30 min limit. The same four lines on every task (test_cli checks it).
+          max_retries: 2
+          min_retry_interval_millis: 600000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+          job_cluster_key: live
+          python_wheel_task: {package_name: smogcast_bronze, entry_point: smogcast-bronze, parameters: ["--step", "station-snapshots", "--env", "${var.env}"]}
+          libraries: [{whl: ../packages/core/dist/*.whl}, {whl: ../packages/bronze/dist/*.whl}]
+
+        - task_key: silver_stations_scd2
+          max_retries: 2
+          min_retry_interval_millis: 600000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+          depends_on: [{task_key: bronze_station_snapshots}]
+          job_cluster_key: live
+          python_wheel_task: {package_name: smogcast_silver_clean, entry_point: smogcast-silver-clean, parameters: ["--step", "stations-scd2", "--env", "${var.env}"]}
+          libraries: [{whl: ../packages/core/dist/*.whl}, {whl: ../packages/silver_clean/dist/*.whl}]
+
+        # --- live measurements: the batches are written by the Azure Function ---
+        # Stream cleaning = the declarative pipeline (resources/pipeline_smogcast_stream.yml); locally the same
+        # tables come from `smogcast-silver-clean --step pm-stream`.
+        - task_key: stream_pipeline
+          max_retries: 2
+          min_retry_interval_millis: 600000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+          depends_on: [{task_key: silver_stations_scd2}]   # station → city from the registry
+          pipeline_task: {pipeline_id: "${resources.pipelines.smogcast_stream.id}"}
+
+        # --- weather forecast for tomorrow ---
+        - task_key: ingest_weather_live
+          max_retries: 2
+          min_retry_interval_millis: 600000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+          job_cluster_key: live
+          python_wheel_task: {package_name: smogcast_ingest, entry_point: smogcast-ingest, parameters: ["--step", "weather-forecast-live", "--env", "${var.env}"]}
+          libraries: [{whl: ../packages/core/dist/*.whl}, {whl: ../packages/ingest/dist/*.whl}]
+
+        - task_key: bronze_weather
+          max_retries: 2
+          min_retry_interval_millis: 600000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+          depends_on: [{task_key: ingest_weather_live}]
+          job_cluster_key: live
+          python_wheel_task: {package_name: smogcast_bronze, entry_point: smogcast-bronze, parameters: ["--step", "weather-forecast", "--env", "${var.env}"]}
+          libraries: [{whl: ../packages/core/dist/*.whl}, {whl: ../packages/bronze/dist/*.whl}]
+
+        - task_key: silver_weather_daily
+          max_retries: 2
+          min_retry_interval_millis: 600000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+          depends_on: [{task_key: bronze_weather}]
+          job_cluster_key: live
+          python_wheel_task: {package_name: smogcast_silver_transform, entry_point: smogcast-silver-transform, parameters: ["--step", "weather-daily", "--env", "${var.env}"]}
+          libraries: [{whl: ../packages/core/dist/*.whl}, {whl: ../packages/silver_transform/dist/*.whl}]
+
+        # --- tomorrow's forecast ---
+        # Each run is labelled preliminary / official / update (smogcast.model.forecast_runs) and kept in
+        # gold.forecast_history; --run-id {{job.run_id}} lets a RETRY of model_forecast keep its label and
+        # replace its own history rows instead of adding a second version.
+        - task_key: silver_features_live
+          max_retries: 2
+          min_retry_interval_millis: 600000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+          depends_on: [{task_key: stream_pipeline}, {task_key: silver_weather_daily}]
+          job_cluster_key: live
+          python_wheel_task: {package_name: smogcast_silver_transform, entry_point: smogcast-silver-transform, parameters: ["--step", "features-live", "--env", "${var.env}"]}
+          libraries: [{whl: ../packages/core/dist/*.whl}, {whl: ../packages/silver_transform/dist/*.whl}]
+
+        - task_key: model_forecast
+          max_retries: 2
+          min_retry_interval_millis: 600000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+          depends_on: [{task_key: silver_features_live}]
+          job_cluster_key: live
+          python_wheel_task: {package_name: smogcast_model, entry_point: smogcast-model, parameters: ["--step", "forecast", "--env", "${var.env}", "--run-id", "{{job.run_id}}"]}
+          libraries: [{whl: ../packages/core/dist/*.whl}, {whl: ../packages/model/dist/*.whl}]
+
+        # --- data-quality summary for the dashboard ---
+        - task_key: gold_dq_summary
+          max_retries: 2
+          min_retry_interval_millis: 600000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+          depends_on: [{task_key: stream_pipeline}]
+          job_cluster_key: live
+          python_wheel_task: {package_name: smogcast_gold, entry_point: smogcast-gold, parameters: ["--step", "dq-summary", "--env", "${var.env}"]}
+          libraries: [{whl: ../packages/core/dist/*.whl}, {whl: ../packages/gold/dist/*.whl}]
+
+        # --- measured daily values (finished days) and official forecasts vs what was measured ---
+        - task_key: silver_pm_daily_live
+          max_retries: 2
+          min_retry_interval_millis: 600000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+          depends_on: [{task_key: stream_pipeline}]
+          job_cluster_key: live
+          python_wheel_task: {package_name: smogcast_silver_transform, entry_point: smogcast-silver-transform, parameters: ["--step", "pm-daily-live", "--env", "${var.env}"]}
+          libraries: [{whl: ../packages/core/dist/*.whl}, {whl: ../packages/silver_transform/dist/*.whl}]
+
+        - task_key: gold_measured_daily
+          max_retries: 2
+          min_retry_interval_millis: 600000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+          depends_on: [{task_key: silver_pm_daily_live}, {task_key: model_forecast}]   # verification reads forecast_history
+          job_cluster_key: live
+          python_wheel_task: {package_name: smogcast_gold, entry_point: smogcast-gold, parameters: ["--step", "measured-daily", "--env", "${var.env}"]}
+          libraries: [{whl: ../packages/core/dist/*.whl}, {whl: ../packages/gold/dist/*.whl}]
+
+        # --- governance: comments, tags and the row/column-secured views of gold (conf/gold_dictionary.yaml) ---
+        - task_key: gold_governance
+          max_retries: 2
+          min_retry_interval_millis: 600000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+          depends_on: [{task_key: model_forecast}, {task_key: gold_dq_summary}, {task_key: gold_measured_daily}]
+          job_cluster_key: live
+          python_wheel_task: {package_name: smogcast_gold, entry_point: smogcast-gold, parameters: ["--step", "governance", "--env", "${var.env}"]}
+          libraries: [{whl: ../packages/core/dist/*.whl}, {whl: ../packages/gold/dist/*.whl}]
+
+        # --- refresh the AI/BI dashboard so it opens with this run's numbers, not a stale snapshot (Databricks only) ---
+        - task_key: dashboard_refresh
+          max_retries: 2
+          min_retry_interval_millis: 600000
+          retry_on_timeout: true
+          timeout_seconds: 1800
+          depends_on: [{task_key: gold_governance}]
+          dashboard_task:
+            dashboard_id: ${resources.dashboards.smogcast.id}
+            warehouse_id: ${var.warehouse_id}
