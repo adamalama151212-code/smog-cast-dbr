@@ -1,0 +1,34 @@
+# =============================================================================
+# LOCAL environment — PoC on a laptop / in Docker.
+#
+# Portability rule: local / dev / prod differ ONLY in this kind of file. Code is
+# identical. If you are tempted to write `if env == "local"` in transformation
+# logic, the parameter belongs here instead.
+# =============================================================================
+storage:
+  # path    = Delta tables as directories on disk (no Unity Catalog locally)
+  # catalog = tables in Unity Catalog `catalog.schema.table` (Databricks)
+  mode: path
+  # data root; can be overridden with the SMOGCAST_DATA_DIR environment variable
+  root: data
+
+spark:
+  # local[*] = all laptop cores. Ignored on Databricks (the cluster provides the session).
+  master: "local[*]"
+  # The default 200 shuffle partitions is far too many for a laptop.
+  shuffle_partitions: 8
+  driver_memory: "4g"
+  delta_snapshot_partitions: 2
+
+run:
+  cities: [warszawa, krakow, wroclaw, lodz, poznan, gdansk, szczecin, bydgoszcz, lublin, bialystok]
+  # Years of hourly PM data taken from the GIOŚ archive (forecast archive starts in 2021).
+  archive_years: [2021, 2022, 2023, 2024, 2025]
+  seed: 42
+
+sources:
+  # gios      = real data (GIOŚ archive + API; needs internet)
+  # synthetic = deterministic generator (--offline, tests, CI)
+  pm: gios
+  # open_meteo = archived and live weather forecasts from Open-Meteo
+  weather: open_meteo

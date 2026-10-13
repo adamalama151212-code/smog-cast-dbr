@@ -1,0 +1,35 @@
+# =============================================================================
+# Weather forecast sources (Open-Meteo), verified 2026-10-01 — ARCHITECTURE.md section 11.3, decision D7.
+#
+# The model must see the weather FORECAST for tomorrow, never the weather that actually
+# happened (that would inflate the backtest). Two archives exist:
+#   day_ahead   — forecasts issued one day earlier (`<var>_previous_day1`). Real day-ahead
+#                 quality, but only from 2024-01-19 12:00 UTC (earlier hours come back as null).
+#   short_range — continuously stitched freshest forecasts (a few hours of lead time), from 2021.
+#                 Slightly better than a real day-ahead forecast.
+# Use: training on short_range (2021–2023, the only option), validation and test on day_ahead
+# — so the evaluation reflects the forecast quality the model would really get.
+# =============================================================================
+weather:
+  hourly_variables:
+    - temperature_2m
+    - relative_humidity_2m
+    - wind_speed_10m
+    - wind_direction_10m
+    - precipitation
+    - surface_pressure
+    - cloud_cover
+    - shortwave_radiation
+  sources:
+    short_range:
+      url: "https://historical-forecast-api.open-meteo.com/v1/forecast"
+      variable_suffix: ""
+      first_year: 2021
+    day_ahead:
+      url: "https://previous-runs-api.open-meteo.com/v1/forecast"
+      variable_suffix: "_previous_day1"
+      first_year: 2024
+    # Live forecast for tomorrow (stage E6).
+    live:
+      url: "https://api.open-meteo.com/v1/forecast"
+      variable_suffix: ""

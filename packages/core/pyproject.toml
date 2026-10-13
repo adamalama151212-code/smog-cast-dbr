@@ -1,0 +1,42 @@
+# smogcast-core: shared library for every pipeline step (config, Spark session, storage,
+# data-quality metrics). It has no entry point — step wheels depend on it.
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smogcast-core"
+version = "0.1.0"  # x-release-please-version (must equal ../../VERSION, checked by a test)
+description = "smogcast shared infrastructure: config, Spark session, storage, DQ metrics"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "pyyaml>=6.0",
+    # Time-zone database for zoneinfo (Europe/Warsaw); slim Docker images and Windows
+    # do not always ship one.
+    "tzdata>=2024.1",
+]
+
+[project.optional-dependencies]
+# Spark and Delta only for running OUTSIDE Databricks (Docker, CI): install with
+# `pip install -e "packages/core[local]"`. On a cluster both come with the runtime; as a
+# plain dependency pip could pull a second PySpark from PyPI next to the runtime's one,
+# and a PyPI `delta-spark` could shadow the built-in `delta` module (storage.py imports it).
+local = [
+    # PySpark 4.0 = same major version as Databricks Runtime 17.x, so local behaviour
+    # (e.g. ANSI SQL on by default) matches the cluster.
+    "pyspark>=4.0,<4.1",
+    # delta-spark 4.0.x pairs with Spark 4.0.x (Delta compatibility matrix).
+    "delta-spark>=4.0,<4.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["smogcast.*"]
+# PEP 420 namespace package: every smogcast-* wheel contributes a sub-package of
+# `smogcast`, so none of them may own src/smogcast/__init__.py.
+namespaces = true
+
+[tool.setuptools.package-data]
+# YAML travels inside the wheel, so a Job on Databricks runs with exactly the
+# thresholds and settings that were tested locally.
+"smogcast.core" = ["conf/*.yaml"]

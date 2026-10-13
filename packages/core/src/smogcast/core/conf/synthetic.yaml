@@ -1,0 +1,22 @@
+# =============================================================================
+# Synthetic input generator — used ONLY when sources.pm / sources.weather = synthetic
+# (integration tests, CI, `--offline`). Never mixed with real data: offline runs use their own
+# data root (data-offline/). The values are plausible, not real.
+# =============================================================================
+synthetic:
+  # Months of each archive year to generate. The heating season keeps exceedances frequent enough
+  # for every split to contain positive days, and fewer rows keep CI fast.
+  months: [1, 2, 11, 12]
+  # Stations per city; the fault-injection city gets at least as many as its schedule needs.
+  stations_per_city: 3
+  # Typical PM2.5 level of a city in µg/m³ (scales the whole series; PM10 is derived from PM2.5).
+  pm25_level:
+    krakow: 16
+    default: 10
+  # Share of empty cells in the archive sheets and of empty values in a live poll (real GIOŚ has both).
+  missing_share: 0.01
+  # Forecast error relative to the hidden true weather, per weather source (0 = perfect forecast).
+  forecast_error:
+    short_range: 0.3
+    day_ahead: 1.0
+    live: 1.0

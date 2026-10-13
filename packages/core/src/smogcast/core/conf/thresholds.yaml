@@ -1,0 +1,22 @@
+# =============================================================================
+# What "exceedance" means (ARCHITECTURE.md, section 11.1). Thresholds live in config,
+# not in code, each with its source — and they are part of the RAG corpus so the
+# AI application can explain them.
+# =============================================================================
+thresholds:
+  # Daily mean concentration above which a day counts as an exceedance [µg/m³].
+  daily_limit_ug_m3:
+    # Limit value for health protection, PL/EU (Directive 2008/50/EC); also returned by
+    # the GIOŚ API levels/getPermissible (standardValue 50.5 after rounding, 35 days/year allowed).
+    PM10: 50
+    # No daily PM2.5 limit in current Polish law. 25 µg/m³ = daily limit value of the
+    # revised EU Directive 2024/2881 (applicable from 2030). Alternative: 15 (WHO 2021 guideline).
+    PM2.5: 25
+
+  # A station's daily mean is valid only with at least this many hourly results
+  # (75% of 24 h — EU data-completeness criterion).
+  daily_min_valid_hours: 18
+
+  # A forecast probability at or above this value is reported as a warning
+  # (used for POD/FAR/CSI; the probability itself is always shown).
+  warning_probability: 0.5

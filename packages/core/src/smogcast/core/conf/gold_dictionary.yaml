@@ -1,0 +1,177 @@
+# =============================================================================
+# Data dictionary of the gold layer + access rules (ARCHITECTURE.md, section 4a).
+#
+# ONE source for: column comments and tags in Unity Catalog, the row/column-secured views in schema
+# `gold_secure` (step `smogcast-gold --step governance`), and — later — the text-to-SQL prompt and the
+# assistant's knowledge base. Every column of every gold table must be listed (the governance step fails
+# otherwise, so a new column cannot slip in undocumented).
+#
+#   class: business  = what the platform answers; every role sees it
+#          technical = how it was produced (run ids, versions, sources); masked (NULL) for everyone but admins
+#   region_column: the column that ties a row to a voivodeship (RLS); `city_id` is mapped through
+#                  conf/cities.yaml; a table without it is not row-filtered (no per-city data in it)
+# =============================================================================
+governance:
+  secure_schema: gold_secure          # views for analysts and regions (Terraform creates the schema and grants)
+  access_table: access_policy         # in schema ops (admins only): principal (e-mail) → role [+ region]
+  all_cities_id: ALL                  # aggregate rows (city_id = 'ALL') are not per-region: every role sees them
+  # Account groups (Terraform module governance); used when the viewer has no row in the access table.
+  groups:
+    admin: smogcast-admins
+    analyst: smogcast-analysts
+    region_prefix: smogcast-region-   # + jurisdiction_code, e.g. smogcast-region-PL-12
+
+gold_dictionary:
+  forecast_tomorrow:
+    description: "Tomorrow's PM10 / PM2.5 limit-exceedance forecast per city – always the newest run of the day."
+    region_column: jurisdiction_code
+    columns: &forecast_columns
+      city_id: {class: business, description: "City identifier (e.g. krakow)."}
+      city_name: {class: business, description: "City name."}
+      jurisdiction_code: {class: business, description: "Voivodeship code (ISO 3166-2:PL, e.g. PL-12 = Małopolskie); row-level security filters on it."}
+      pollutant: {class: business, description: "PM10 or PM2.5."}
+      issue_day: {class: business, description: "Day D (CET) on which the forecast was issued."}
+      target_day: {class: business, description: "Day D+1 (CET) the forecast is for."}
+      probability: {class: business, description: "Probability (0–1) that the daily mean of the city's worst station exceeds the daily limit on target_day."}
+      warned: {class: business, description: "True when probability >= 0.5 – a yes/no summary of the probability."}
+      limit_ug_m3: {class: business, description: "Daily limit that defines an exceedance, µg/m³ (PM10 50, PM2.5 25)."}
+      status: {class: business, description: "ok, or no_forecast when the inputs were incomplete (see unusable_reason) – never a guessed value."}
+      unusable_reason: {class: business, description: "Why there is no forecast (e.g. no valid PM yesterday, incomplete weather forecast); empty when status = ok."}
+      model: {class: business, description: "Model that produced the probability (gbt = gradient-boosted trees, chosen on the validation year)."}
+      model_version: {class: technical, description: "Saved model version used (final = refit on 2021–2024)."}
+      weather_source: {class: technical, description: "Weather forecast feed used for tomorrow's inputs (live = Open-Meteo forecast)."}
+      pm_d1_max_ug_m3: {class: business, description: "Yesterday's highest station daily mean in the city, µg/m³ – a main reason for the forecast."}
+      pm_d_morning_max_ug_m3: {class: business, description: "This morning's highest station mean (00–10 CET), µg/m³."}
+      t_mean_c: {class: business, description: "Forecast mean temperature tomorrow, °C (cold → more home heating)."}
+      wind_mean_ms: {class: business, description: "Forecast mean wind speed tomorrow, m/s (wind disperses dust)."}
+      calm_hours: {class: business, description: "Forecast hours tomorrow with wind below 1.5 m/s (calm air keeps smoke over the city)."}
+      precip_sum_mm: {class: business, description: "Forecast precipitation tomorrow, mm (rain washes dust out)."}
+      run_kind: {class: business, description: "preliminary (before 11:30 CET, morning incomplete), official (first run from 11:30 CET – the one verified against reality) or update (later run, newer weather)."}
+      run_id: {class: technical, description: "Id of the Job run that issued the row."}
+      issued_at: {class: business, description: "When the forecast was computed (UTC)."}
+
+  forecast_history:
+    description: "Every forecast run (preliminary, official, update) – how a forecast changed during the day; verify the official one."
+    region_column: jurisdiction_code
+    columns: *forecast_columns
+
+  measured_daily:
+    description: "What was really measured: daily PM10 / PM2.5 per city and day – GIOŚ archive 2021–2025 and the live feed (finished days only)."
+    region_column: jurisdiction_code
+    columns:
+      city_id: {class: business, description: "City identifier (e.g. krakow)."}
+      city_name: {class: business, description: "City name."}
+      jurisdiction_code: {class: business, description: "Voivodeship code (ISO 3166-2:PL); row-level security filters on it."}
+      pollutant: {class: business, description: "PM10 or PM2.5."}
+      day_cet: {class: business, description: "Calendar day in CET (UTC+1 all year), as GIOŚ computes daily means."}
+      heating_season: {class: business, description: "Heating season the day belongs to, e.g. 2024/25 = October 2024 – April 2025; empty from May to September."}
+      max_station_mean_ug_m3: {class: business, description: "Daily mean of the city's worst station, µg/m³ – compared with the limit."}
+      mean_station_mean_ug_m3: {class: business, description: "Average of the stations' daily means, µg/m³."}
+      n_stations: {class: business, description: "Stations with a valid day (at least 18 of 24 hourly results)."}
+      limit_ug_m3: {class: business, description: "Daily limit, µg/m³ (PM10 50, PM2.5 25)."}
+      exceeded: {class: business, description: "True when the worst station's daily mean is above the limit – an exceedance day."}
+      source: {class: business, description: "archive (GIOŚ verified data 2021–2025) or live (GIOŚ API, not yet verified by GIOŚ)."}
+      computed_at: {class: technical, description: "When the table was computed (UTC)."}
+
+  forecast_verification:
+    description: "Did the official forecast come true? Each official forecast next to what was measured on its target day."
+    region_column: jurisdiction_code
+    columns:
+      city_id: {class: business, description: "City identifier (e.g. krakow)."}
+      city_name: {class: business, description: "City name."}
+      jurisdiction_code: {class: business, description: "Voivodeship code (ISO 3166-2:PL); row-level security filters on it."}
+      pollutant: {class: business, description: "PM10 or PM2.5."}
+      issue_day: {class: business, description: "Day D (CET) on which the official forecast was issued."}
+      target_day: {class: business, description: "Day D+1 (CET) the forecast was for."}
+      probability: {class: business, description: "Forecast probability (0–1) of an exceedance on target_day."}
+      warned: {class: business, description: "True when probability >= 0.5 (a warning was issued)."}
+      limit_ug_m3: {class: business, description: "Daily limit, µg/m³ (PM10 50, PM2.5 25)."}
+      status: {class: business, description: "ok, or no_forecast when the inputs were incomplete."}
+      issued_at: {class: business, description: "When the official forecast was computed (UTC)."}
+      measured_max_ug_m3: {class: business, description: "Measured daily mean of the city's worst station on target_day, µg/m³."}
+      exceeded: {class: business, description: "True when the limit was really exceeded on target_day."}
+      measured_source: {class: business, description: "Where the measurement comes from: live (GIOŚ API) or archive."}
+      outcome: {class: business, description: "hit (warned, exceeded), miss (not warned, exceeded), false_alarm (warned, not exceeded), correct_no_warning, no_forecast, no_data (no valid measurement) or pending (target day not over yet)."}
+      squared_error: {class: business, description: "(probability − outcome)² – its average over days is the live Brier score; lower is better."}
+      computed_at: {class: technical, description: "When the table was computed (UTC)."}
+
+  backtest_predictions:
+    description: "Model and baseline probabilities vs what really happened, per day of the validation (2024) and test (2025) years."
+    region_column: city_id
+    columns:
+      model: {class: business, description: "gbt, logistic, or a baseline: persistence ('tomorrow like today'), climatology (calendar average)."}
+      split: {class: business, description: "validation (2024, used to choose the model) or test (2025, never seen before the final check)."}
+      city_id: {class: business, description: "City identifier."}
+      pollutant: {class: business, description: "PM10 or PM2.5."}
+      issue_day: {class: business, description: "Day D the forecast would have been issued."}
+      target_day: {class: business, description: "Day D+1 it was for."}
+      probability: {class: business, description: "Forecast probability of an exceedance (0–1)."}
+      label: {class: business, description: "1 if the limit was really exceeded on target_day, else 0."}
+      warned: {class: business, description: "True when probability >= 0.5."}
+
+  backtest_metrics:
+    description: "How good each model and baseline was, per split, pollutant and city (city_id = ALL: all cities together)."
+    region_column: city_id
+    columns:
+      model: {class: business, description: "gbt, logistic, persistence or climatology."}
+      split: {class: business, description: "validation (2024) or test (2025)."}
+      pollutant: {class: business, description: "PM10 or PM2.5."}
+      city_id: {class: business, description: "City identifier, or ALL for all cities together."}
+      n_days: {class: business, description: "Days evaluated."}
+      n_exceed: {class: business, description: "Days with a real exceedance."}
+      base_rate: {class: business, description: "Share of days with an exceedance."}
+      brier: {class: business, description: "Brier score – mean squared error of the probability; lower is better (0 = perfect)."}
+      hits: {class: business, description: "Exceedance days with a warning."}
+      misses: {class: business, description: "Exceedance days without a warning."}
+      false_alarms: {class: business, description: "Warnings on days without an exceedance."}
+      brier_climatology: {class: business, description: "Brier score of the calendar-average baseline on the same days."}
+      auc: {class: business, description: "How well days are ranked from safest to most dangerous; closer to 1 is better."}
+      bss: {class: business, description: "Brier skill score vs climatology; above 0 = better than the calendar average."}
+      pod: {class: business, description: "Probability of detection – share of exceedance days that got a warning; higher is better."}
+      far: {class: business, description: "False alarm ratio – share of warnings that were false; lower is better; empty when there were no warnings."}
+      csi: {class: business, description: "Critical success index – hits / (hits + misses + false alarms); higher is better."}
+
+  reliability:
+    description: "Calibration: within each band of forecast probability, how often an exceedance really happened (does '70%' mean 70%?)."
+    columns:
+      model: {class: business, description: "Model or baseline."}
+      split: {class: business, description: "validation or test."}
+      pollutant: {class: business, description: "PM10 or PM2.5."}
+      # business, not technical: the app (calibration chart, "of days forecast at 70%…") reads gold_secure as an analyst
+      bin: {class: business, description: "Band index 0–9 (0 = forecasts 0–10%, 9 = forecasts 90–100%)."}
+      n_days: {class: business, description: "Days in the band (bands with fewer than 30 days are not judged)."}
+      mean_probability: {class: business, description: "Mean forecast probability in the band."}
+      observed_frequency: {class: business, description: "How often an exceedance really happened in the band."}
+      bin_from: {class: business, description: "Lower edge of the band."}
+      bin_to: {class: business, description: "Upper edge of the band."}
+      gap: {class: business, description: "observed_frequency − mean_probability; criterion K3 allows at most 0.15."}
+
+  acceptance:
+    description: "Verdict of the acceptance criteria K1–K4, fixed before training, for each pollutant's operational model on the 2025 test year."
+    columns:
+      pollutant: {class: business, description: "PM10 or PM2.5."}
+      model: {class: business, description: "Operational model judged."}
+      criterion: {class: business, description: "K1 beats climatology, K2 beats persistence, K3 calibrated, K4a catches smog days, K4b few false alarms (K4 for PM10 only)."}
+      description: {class: business, description: "The criterion in words."}
+      value: {class: business, description: "Value reached on the test year."}
+      threshold: {class: business, description: "Value required."}
+      passed: {class: business, description: "True if the criterion is met."}
+
+  model_selection:
+    description: "Hyper-parameter grid evaluated on the validation year; operational = the model used for forecasts (lowest validation Brier)."
+    columns:
+      pollutant: {class: business, description: "PM10 or PM2.5."}
+      model: {class: business, description: "gbt or logistic."}
+      params: {class: technical, description: "Hyper-parameters of the variant (JSON)."}
+      validation_brier: {class: business, description: "Brier score on the validation year 2024; lower is better."}
+      best_of_type: {class: technical, description: "True for the best variant of its model type."}
+      operational: {class: business, description: "True for the model that produces the forecasts."}
+
+  dq_summary:
+    description: "Data quality of the live stream per source (live = GIOŚ API, fault_replay = demonstration with injected faults)."
+    columns:
+      source: {class: business, description: "live or fault_replay."}
+      metric: {class: business, description: "records_received, unique_readings, resent_duplicates, late_rejected, quarantined[_<reason>], silver_readings, silver_valid, flag_<ok|frozen|spike|drift>."}
+      value: {class: business, description: "Count for the metric."}
+      pct_of_unique: {class: business, description: "Share of unique readings, %."}
+      computed_at: {class: technical, description: "When the summary was computed (UTC)."}

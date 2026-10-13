@@ -1,0 +1,34 @@
+# =============================================================================
+# PROD environment — paid workspace; deployed ONLY by CI (no manual changes).
+# =============================================================================
+storage:
+  mode: catalog
+  catalog: smogcast_prod
+  landing_root: /Volumes/smogcast_prod/raw/landing
+  # Files polled from the GIOŚ API (gios_registry/, gios_live/): written by the Azure Function (functions/gios_poller)
+  # to its blob container, exposed as the EXTERNAL volume raw.landing_live (Terraform module live_ingest).
+  live_landing_root: /Volumes/smogcast_prod/raw/landing_live
+  checkpoint_root: /Volumes/smogcast_prod/raw/checkpoints
+  # Saved Spark ML models (MLflow registry is an optional upgrade in stage E9).
+  models_root: /Volumes/smogcast_prod/raw/models
+  # The stream tables (bronze.pm_stream, silver.pm_stream, ops.pm_late_rejected, ops.pm_stream_quarantine) belong to
+  # the declarative pipeline smogcast-stream: no step may edit them; resets = remove landing files + FULL refresh
+  # of the pipeline (Job smogcast-fault-demo). Locally (no such key) the step `silver-clean pm-stream` owns them.
+  stream_tables_owner: pipeline
+
+spark: {}
+
+run:
+  cities: [warszawa, krakow, wroclaw, lodz, poznan, gdansk, szczecin, bydgoszcz, lublin, bialystok]
+  archive_years: [2021, 2022, 2023, 2024, 2025]
+  seed: 42
+
+sources:
+  pm: gios
+  weather: open_meteo
+
+governance:
+  # First rows of ops.access_policy (gold/governance.py) — inserted only when the principal has no row yet.
+  seed_access: []   # TODO: the author's course account as admin, once PROD exists
+  # Who may edit ops.access_policy. No account groups on the course's PROD, so a user goes here.
+  access_editors: []   # TODO: the author's course account, once PROD exists

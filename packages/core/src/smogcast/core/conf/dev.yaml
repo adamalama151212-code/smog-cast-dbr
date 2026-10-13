@@ -1,0 +1,40 @@
+# =============================================================================
+# DEV environment — Databricks DEV workspace. Same code as locally; only the
+# storage location (Unity Catalog + volume) changes.
+# =============================================================================
+storage:
+  mode: catalog
+  catalog: smogcast_dev
+  # Unity Catalog volume for raw files (landing). On Databricks /Volumes/... paths
+  # behave like a regular file system, so ingest code (open(), Path) works unchanged.
+  landing_root: /Volumes/smogcast_dev/raw/landing
+  # Files polled from the GIOŚ API (gios_registry/, gios_live/): written by the Azure Function (functions/gios_poller)
+  # to its blob container, exposed as the EXTERNAL volume raw.landing_live (Terraform module live_ingest).
+  live_landing_root: /Volumes/smogcast_dev/raw/landing_live
+  checkpoint_root: /Volumes/smogcast_dev/raw/checkpoints
+  # Saved Spark ML models (MLflow registry is an optional upgrade in stage E9).
+  models_root: /Volumes/smogcast_dev/raw/models
+  # The stream tables (bronze.pm_stream, silver.pm_stream, ops.pm_late_rejected, ops.pm_stream_quarantine) belong to
+  # the declarative pipeline smogcast-stream: no step may edit them; resets = remove landing files + FULL refresh
+  # of the pipeline (Job smogcast-fault-demo). Locally (no such key) the step `silver-clean pm-stream` owns them.
+  stream_tables_owner: pipeline
+
+spark: {}
+
+run:
+  cities: [warszawa, krakow, wroclaw, lodz, poznan, gdansk, szczecin, bydgoszcz, lublin, bialystok]
+  archive_years: [2021, 2022, 2023, 2024, 2025]
+  seed: 42
+
+sources:
+  pm: gios
+  weather: open_meteo
+
+governance:
+  # First rows of ops.access_policy (gold/governance.py) — inserted only when the principal has no row yet,
+  # so a role changed for the demo survives the next Job run. Who sees what: ARCHITECTURE.md, section 4a.
+  seed_access:
+    - {principal: adamalama152001@gmail.com, role: admin, note: author}
+  # Who may edit ops.access_policy (groups or users). The table belongs to the Jobs' principal like every other
+  # table; these principals get write access to it and to nothing else.
+  access_editors: [smogcast-admins]

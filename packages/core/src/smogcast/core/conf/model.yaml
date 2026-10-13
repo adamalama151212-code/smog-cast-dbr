@@ -1,0 +1,60 @@
+# =============================================================================
+# Forecast model settings (ARCHITECTURE.md section 11.3, decisions D5–D9).
+# =============================================================================
+model:
+  # Forecast for day D+1 is issued on day D at this hour (CET). Features may only use
+  # data available at that moment — anything later would leak the future into backtests.
+  issue_hour_cet: 12
+
+  # "Today so far": hours of day D that are published before the issue time. GIOŚ publishes
+  # an hour roughly one hour after it ends, so at 12:00 CET the hours starting 00:00–10:00
+  # CET are available. The partial-day mean needs at least `morning_min_hours` of them.
+  morning_last_hour_cet: 10
+  morning_min_hours: 8
+
+  # Live runs on issue day D (the live Job runs 3 times a day, resources/job_smogcast_live.yml) are labelled
+  # (gold.forecast_history.run_kind): before this CET time → "preliminary" (the morning above is not complete; never
+  # evaluated in the backtest); the FIRST run from this time on → "official" (the inputs the model was tested with —
+  # the 10–11 CET hour is in the Azure Function's 11:25 CET poll); every later run → "update" (newer weather).
+  official_from_cet: "11:30"
+
+  # Chronological split only (never random: neighbouring days are alike).
+  # The test year is evaluated ONCE, at the end of stage E5 — never used for tuning.
+  split:
+    train_years: [2021, 2023]
+    validation_year: 2024
+    test_year: 2025
+
+  # Models to train and compare; baselines are always computed.
+  models: [logistic, gbt]
+  baselines: [persistence, climatology]
+
+  # Hyper-parameter grids, searched on the VALIDATION year only (lowest Brier score wins).
+  grids:
+    logistic: {reg_param: [0.0, 0.001, 0.01, 0.1]}
+    gbt: {max_depth: [3, 5], max_iter: [50, 100]}
+
+  # Fixed BEFORE seeing any result (2026-10-01): the operational model of each pollutant is the
+  # model type with the lowest VALIDATION Brier score. It is then refit on train + validation
+  # years and evaluated once on the test year; acceptance criteria apply to that model.
+  # Never switch models after looking at test-year numbers.
+  selection: lowest_validation_brier
+  refit_on_train_and_validation: true
+
+  # Weather input per split (decision D7): training only has the short-range archive,
+  # validation and test use REAL day-ahead forecasts (from 2024-01-19); test-split days
+  # without a day-ahead forecast are excluded from evaluation, never back-filled.
+  weather_source:
+    train: short_range
+    validation: day_ahead
+    test: day_ahead
+
+  # Acceptance criteria, FROZEN on 2026-10-01 BEFORE any training (ARCHITECTURE.md, section 11.2).
+  # The model counts as valid only if ALL hold on the test year. Do not edit after seeing results.
+  acceptance:
+    k1_brier_skill_vs_climatology_min: 0.0          # BSS > 0: better probabilities than the calendar
+    k2_must_beat_persistence_brier: true             # Brier lower than "tomorrow like today"
+    k3_calibration_max_abs_gap: 0.15                 # per probability bin with >= 30 days
+    k3_calibration_min_bin_days: 30
+    k4_pm10_min_pod: 0.60                            # share of exceedance days that were warned about
+    k4_pm10_max_far: 0.50                            # share of warnings that were false alarms

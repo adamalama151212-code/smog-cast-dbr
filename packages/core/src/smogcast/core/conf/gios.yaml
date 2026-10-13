@@ -1,0 +1,18 @@
+# =============================================================================
+# GIOŚ data sources (verified 2026-10-01, ARCHITECTURE.md section 11.4).
+# =============================================================================
+gios:
+  archive:
+    # "Przygotowane dane do pobrania" on https://powietrze.gios.gov.pl/pjp/archives
+    download_url: "https://powietrze.gios.gov.pl/pjp/archives/downloadFile/{file_id}"
+    # The labels on the web page are shifted against the links, so ids were verified via the
+    # Content-Disposition file name. The download step re-checks it (the year must appear in it).
+    yearly_file_ids: {2019: 322, 2020: 424, 2021: 486, 2022: 524, 2023: 564, 2024: 582, 2025: 644}
+    # "Metadane oraz kody stacji i stanowisk pomiarowych.xlsx" — includes CLOSED stations,
+    # their town, coordinates and old codes, which the current API no longer lists.
+    metadata_file_id: 643
+    # Hourly (automatic) series only; daily means are computed by silver_transform.
+    # File name inside the yearly zip: <year>_<archive_token>_1g.xlsx
+    averaging: "1g"
+  api:
+    base_url: "https://api.gios.gov.pl/pjp-api/v1/rest"

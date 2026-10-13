@@ -1,0 +1,39 @@
+# =============================================================================
+# Data-quality rules for PM measurements. The same values are read by the
+# fault-injection replay (so it knows what an anomaly is) and by the cleaning
+# steps (so they detect it) — one source of truth.
+#
+# Reality check on the GIOŚ archive 2021–2025 (11.4 M hourly values, already
+# verified by GIOŚ): 0 negative values, 3 values > 1000 µg/m³, ~8 k zeros.
+# The archive is clean; dirty data for the demo comes from fault injection (D17).
+# =============================================================================
+pm_dq:
+  hard_rules:
+    min_ug_m3: 0          # negative concentration is physically impossible -> quarantine
+    max_ug_m3: 1000       # beyond the range of automatic PM monitors -> quarantine
+  late_arrival:
+    # Live API: lag = ingest time - measurement time. GIOŚ re-publishes corrected values
+    # for several hours, so the threshold is in hours, not minutes.
+    max_lag_hours: 3
+  dedup:
+    keys: [station_code, pollutant, time_utc]
+  frozen:
+    # The same value (zero included — a PM monitor does not read exactly 0 for hours)
+    # in this many CONSECUTIVE hours: the whole run is flagged.
+    repeat_hours: 6
+  spike:
+    # One hour above `factor` × the highest of its two neighbours on each side, and above
+    # `min_ug_m3` (so tiny absolute jumps at clean-air levels are not flagged).
+    # A real smog episode rises over several hours, so its neighbours are high too.
+    factor: 3.0
+    min_ug_m3: 100
+  drift:
+    # Stream path (E6d). Residual = ln((value + 1) / (city median at that hour + 1)): if all
+    # stations rise together (a real smog episode) the residual stays flat. A station is
+    # drifting when its recent mean residual rises above ITS OWN earlier level — so a traffic
+    # station that always reads higher than the city median is not flagged.
+    window_hours: 24          # recent window
+    baseline_hours: 72        # earlier window right before it (needs >= min_baseline_hours of data)
+    min_baseline_hours: 24
+    min_city_stations: 3      # a median of fewer stations is not a reliable reference
+    log_residual_increase: 0.5

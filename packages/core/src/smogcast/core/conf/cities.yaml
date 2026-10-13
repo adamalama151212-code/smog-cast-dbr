@@ -1,0 +1,27 @@
+# =============================================================================
+# Cities covered by the forecast (decision D2, ARCHITECTURE.md section 11.3): the 10 largest
+# Polish cities. Checked in the GIOŚ API on 2026-10-01: each has 3–14 PM10 and
+# 3–10 PM2.5 measurement positions, each lies in a different voivodeship.
+#
+# gios_city_name   — exact value of "Nazwa miasta" in the GIOŚ station registry;
+#                    stations are matched to a city by this name (no hard-coded list).
+# jurisdiction_code — ISO 3166-2:PL voivodeship code; key for Row Level Security.
+# lat / lon         — city centre, used to request the weather forecast.
+# =============================================================================
+cities:
+  warszawa:   {name: "Warszawa",  gios_city_name: "Warszawa",  voivodeship: "mazowieckie",         jurisdiction_code: PL-14, lat: 52.2297, lon: 21.0122}
+  krakow:     {name: "Kraków",    gios_city_name: "Kraków",    voivodeship: "małopolskie",         jurisdiction_code: PL-12, lat: 50.0647, lon: 19.9450}
+  wroclaw:    {name: "Wrocław",   gios_city_name: "Wrocław",   voivodeship: "dolnośląskie",        jurisdiction_code: PL-02, lat: 51.1079, lon: 17.0385}
+  lodz:       {name: "Łódź",      gios_city_name: "Łódź",      voivodeship: "łódzkie",             jurisdiction_code: PL-10, lat: 51.7592, lon: 19.4560}
+  poznan:     {name: "Poznań",    gios_city_name: "Poznań",    voivodeship: "wielkopolskie",       jurisdiction_code: PL-30, lat: 52.4064, lon: 16.9252}
+  gdansk:     {name: "Gdańsk",    gios_city_name: "Gdańsk",    voivodeship: "pomorskie",           jurisdiction_code: PL-22, lat: 54.3520, lon: 18.6466}
+  szczecin:   {name: "Szczecin",  gios_city_name: "Szczecin",  voivodeship: "zachodniopomorskie",  jurisdiction_code: PL-32, lat: 53.4285, lon: 14.5528}
+  bydgoszcz:  {name: "Bydgoszcz", gios_city_name: "Bydgoszcz", voivodeship: "kujawsko-pomorskie",  jurisdiction_code: PL-04, lat: 53.1235, lon: 18.0084}
+  lublin:     {name: "Lublin",    gios_city_name: "Lublin",    voivodeship: "lubelskie",           jurisdiction_code: PL-06, lat: 51.2465, lon: 22.5684}
+  bialystok:  {name: "Białystok", gios_city_name: "Białystok", voivodeship: "podlaskie",           jurisdiction_code: PL-20, lat: 53.1325, lon: 23.1688}
+
+# Pollutants forecast by the platform. `gios_code` = "Wskaźnik - kod" in the API and the
+# pollutant token in archive file names (PM25 in archive names, PM2.5 in the API).
+pollutants:
+  PM10:  {gios_code: "PM10",  archive_token: "PM10"}
+  PM2.5: {gios_code: "PM2.5", archive_token: "PM25"}
