@@ -83,8 +83,8 @@
   <line x1="829" y1="418" x2="829" y2="482" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
   <g filter="url(#s)"><rect x="150" y="620" width="190" height="90" rx="10" fill="#ffffff" stroke="#64748b" stroke-width="1.5"/><path d="M150 630 a10 10 0 0 1 10 -10 h170 a10 10 0 0 1 10 10 v22 h-190 z" fill="#f1f5f9"/></g>
   <text x="162" y="641" font-size="14" fill="#334155" font-weight="700">Language model</text>
-  <text x="162" y="671" font-size="12.5" fill="#1e293b">OpenAI-compatible API,</text>
-  <text x="162" y="688" font-size="12.5" fill="#1e293b">only follow-ups, advice</text>
+  <text x="162" y="671" font-size="12.5" fill="#1e293b">routing, text-to-SQL,</text>
+  <text x="162" y="688" font-size="12.5" fill="#1e293b">RAG answers</text>
   <g filter="url(#s)"><rect x="390" y="620" width="300" height="90" rx="10" fill="#ffffff" stroke="#0078d4" stroke-width="1.5"/><path d="M390 630 a10 10 0 0 1 10 -10 h280 a10 10 0 0 1 10 10 v22 h-300 z" fill="#e3f0fb"/></g>
   <text x="402" y="641" font-size="14" fill="#004e8c" font-weight="700">smog-cast-app</text>
   <text x="402" y="671" font-size="12.5" fill="#1e293b">Reflex on Azure Container Apps:</text>

@@ -14,7 +14,7 @@ Three repositories, one product:
 |---|---|---|
 | **`smog-cast-dbr`** (this one) | the data pipeline: one wheel per step (`packages/*`), the declarative stream pipeline, the Azure Function that polls the GIOŚ API, the Asset Bundle (Jobs, pipeline, dashboard), CI/CD | `databricks bundle deploy`, from a laptop or GitHub Actions |
 | **`smog-cast-terraform`** | everything around the pipeline: Unity Catalog objects, Key Vault and secret scope, service principals, groups for RLS/CLS, the function app and its storage, the SQL Warehouse settings, the app's hosting | `terraform apply`, by a person |
-| **`smog-cast-app`** | the web app (Reflex): forecast pages and the AI assistant (deterministic forecast answers + RAG over the documents) | a container image, GitHub Actions |
+| **`smog-cast-app`** | the web app (Reflex): forecast pages and the AI assistant (forecast answers built by code, text-to-SQL with guardrails, RAG over the documents) | a container image, GitHub Actions |
 
 The whole infrastructure (DEV):
 
@@ -26,7 +26,7 @@ on the data path. PROD on the course's shared account has no Azure resources of 
 API itself (section 10).
 
 Four pictures (`images/`) describe the system: this one, the two Jobs (sections 3 and 3a) and what happens when
-someone asks the assistant about tomorrow (section 8).
+someone asks the assistant a question (section 8).
 
 ---
 
@@ -344,26 +344,27 @@ hosted it signs in as its own service principal `sp-smogcast-app-<env>` (OAuth m
 the views (DuckDB) is the fallback when the warehouse does not answer, and the interface says so; the copy is not in
 the hosted image. Every view with data shows its SQL.
 
-**The assistant.** Rules settle the certain cases; a language model only classifies the unclear ones and answers
-from the documents – **it never produces a number**. What happens when someone asks in the Assistant tab whether
-there will be smog tomorrow in a city:
+**The assistant.** Rules route every question; one general language model is asked only where it is needed – to
+understand a follow-up, to write SQL for a question about the data, and to answer from the documents. It never makes
+up a number: numbers come from the `gold_secure` views or from the quoted documents. The whole path of a question:
 
-![The Assistant tab: routing rules → the gold_secure views → an answer built by code; a language model only for follow-ups and advice](images/assistant-flow.svg)
+![The Assistant tab: routing (rules, the language model only for follow-ups) → five branches: A forecast built by code, B text-to-SQL through guardrails, C RAG, D dictionary, E fixed texts → checks on the way out → the answer on the page](images/assistant-flow.svg)
 
-The answer for Kraków on DEV on 2026-10-14 (one of its two paragraphs – the question names no pollutant, so it gets
-PM10 and PM2.5): "**Kraków, 2026-10-15, PM2.5:** probability of exceeding the daily limit (25 µg/m³) = **12%** – no
-warning (a warning is issued at 50% or more). Yesterday's highest station daily mean: 14 µg/m³, this morning:
-20 µg/m³. Weather forecast for tomorrow: 9.6 °C, wind 2.3 m/s, 1 h of calm wind, precipitation 0.2 mm. How reliable
-such a "12%" is: in the 2025 test year, at forecasts of 10%–20% the limit was exceeded on 18% of days (275 days).
-Model: GBT · official forecast · issued 2026-10-14, 11:44 CET."
+Branch A for "Will there be smog tomorrow in Kraków?" on DEV on 2026-10-14 (one of its two paragraphs – the question
+names no pollutant, so it gets PM10 and PM2.5): "**Kraków, 2026-10-15, PM2.5:** probability of exceeding the daily
+limit (25 µg/m³) = **12%** – no warning (a warning is issued at 50% or more). Yesterday's highest station daily mean:
+14 µg/m³, this morning: 20 µg/m³. Weather forecast for tomorrow: 9.6 °C, wind 2.3 m/s, 1 h of calm wind,
+precipitation 0.2 mm. How reliable such a "12%" is: in the 2025 test year, at forecasts of 10%–20% the limit was
+exceeded on 18% of days (275 days). Model: GBT · official forecast · issued 2026-10-14, 11:44 CET."
 
 | Part | How it works |
 |---|---|
 | routing | rules first (refusals, greetings, dictionary lookups, "city + tomorrow"); the language model classifies the uncertain questions and follow-ups and rewrites them to stand alone ("Understood as: …"); without a model the rules alone still work |
 | forecast answers | deterministic: the forecast, its calibration in 2025 and the K1–K4 verdict read from `gold_secure`, put into sentences by code; the language model is not asked |
-| RAG | documents written for the assistant (`docs/rag/*.md`, English), official sources as downloaded (the Polish regulation, EU directives, GIOŚ and WHO guidance) and the gold data dictionary are cut into passages (about 1,200 characters, 200 overlap), embedded with `paraphrase-multilingual-MiniLM-L12-v2` (Polish questions find English passages) and searched with embeddings + BM25; answers come **only** from the retrieved passages and always show their sources |
-| language model | any OpenAI-compatible endpoint (`SMOGCAST_LLM_*`); today Cerebras `gpt-oss-120b`; forecast answers, dictionary answers, greetings and refusals do not use it at all |
-| checks | control questions on the real model and data (`tools/ask_eval.py`), unit tests of the routing, a smoke test of every page in 4 views; a test fails when the index is older than the documents |
+| text-to-SQL | for questions about the data other than tomorrow's forecast (model quality, measurements, past forecasts, data quality): the language model sees the columns of the 10 `gold_secure` views with the descriptions from the gold data dictionary (no technical columns), the cities, what the project's words mean and example queries, and writes one SELECT; the guardrails – a parser (`sqlglot`), not the prompt – allow exactly one statement, SELECT only, the 10 listed views and a LIMIT of at most 200; a rejected or failing query goes back to the model, up to 3 tries; the model then describes the returned rows (up to 50) using only their numbers |
+| RAG | documents written for the assistant (`docs/rag/*.md`, English), official sources as downloaded (the Polish regulation, EU directives, GIOŚ and WHO guidance) and the gold data dictionary are cut into passages (about 1,200 characters, 200 overlap), embedded with `paraphrase-multilingual-MiniLM-L12-v2` (Polish questions find English passages) and searched with embeddings + BM25 fused by reciprocal rank (the 6 best passages, 436 in the index); answers come **only** from the retrieved passages and cite them, otherwise "I could not find this information in the documents." |
+| language model | one general model for every use – any OpenAI-compatible endpoint (`SMOGCAST_LLM_*`), today Cerebras `gpt-oss-120b`; no separate SQL model; forecast answers, dictionary answers, greetings and refusals do not use it at all; when it does not answer, the rules and the branches without it still work |
+| checks | 15 control questions on the real model and data (`tools/ask_eval.py`), unit tests of routing and guardrails, a smoke test of every page in 4 views; a test fails when the index is older than the documents |
 
 **The data contract.** The app keeps copies of `conf/cities.yaml`, `conf/thresholds.yaml`, `conf/model.yaml`,
 `conf/gold_dictionary.yaml` and `smogcast/core/schema.py` with checksums; they are changed only here. A new gold table
