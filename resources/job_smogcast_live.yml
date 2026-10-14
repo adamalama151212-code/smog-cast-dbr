@@ -93,6 +93,10 @@ resources:
           min_retry_interval_millis: 600000
           retry_on_timeout: true
           timeout_seconds: 1800
+          # Not a data dependency – the install order. Two first tasks installing their wheels at the same time on the
+          # fresh cluster can resolve smogcast-ingest before smogcast-core is there (it is not on PyPI); the cluster
+          # remembers the failed install, so the retries fail too (DEV, 2026-10-13 23:30 UTC). One first task per Job.
+          depends_on: [{task_key: bronze_station_snapshots}]
           job_cluster_key: live
           python_wheel_task: {package_name: smogcast_ingest, entry_point: smogcast-ingest, parameters: ["--step", "weather-forecast-live", "--env", "${var.env}"]}
           libraries: [{whl: ../packages/core/dist/*.whl}, {whl: ../packages/ingest/dist/*.whl}]

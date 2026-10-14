@@ -130,3 +130,16 @@ def test_lakeflow_jobs_run_the_same_steps_as_the_cli(job_file, order):
         keys = {d["task_key"] for d in task.get("depends_on", [])}
         assert keys <= {x["task_key"] for x in job["tasks"]}, task["task_key"]
     assert steps == set(ORDERS[order]) - OUTSIDE_DATABRICKS
+
+
+@pytest.mark.parametrize("job_file", ["job_smogcast.yml", "job_smogcast_live.yml", "job_smogcast_fault_demo.yml"])
+def test_every_job_starts_with_one_task(job_file):
+    # Two first tasks install their wheels on the fresh cluster at the same time, and a step wheel can be resolved
+    # before smogcast-core is installed (it is not on PyPI) – a failed install the retries cannot fix.
+    from pathlib import Path
+
+    import yaml
+
+    resources = Path(__file__).resolve().parents[3] / "resources"
+    job = next(iter(yaml.safe_load((resources / job_file).read_text(encoding="utf-8"))["resources"]["jobs"].values()))
+    assert [t["task_key"] for t in job["tasks"] if not t.get("depends_on")] == [job["tasks"][0]["task_key"]]
