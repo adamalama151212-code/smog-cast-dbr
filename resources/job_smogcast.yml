@@ -50,6 +50,10 @@ resources:
           min_retry_interval_millis: 600000
           retry_on_timeout: true
           timeout_seconds: 5400
+          # Not a data dependency – the install order: one first task per Job, so smogcast-core is on the fresh cluster
+          # before any other wheel needs it (see ingest_weather_live in job_smogcast_live.yml). Costs about 3 minutes:
+          # the weather branch is shorter than the measurement branch that features also waits for.
+          depends_on: [{task_key: ingest_gios_archive}]
           job_cluster_key: main
           python_wheel_task: {package_name: smogcast_ingest, entry_point: smogcast-ingest, parameters: ["--step", "weather-forecast-history", "--env", "${var.env}"]}
           libraries: [{whl: ../packages/core/dist/*.whl}, {whl: ../packages/ingest/dist/*.whl}]
