@@ -1,12 +1,5 @@
 # smogcast architecture
 
-> Legend: ✅ built and tested · 🚧 in progress · 🔜 planned.
-> State on **2026-10-12**: the pipeline runs on Databricks DEV on its schedule (Jobs, declarative pipeline, Azure
-> Function, RLS/CLS, AI/BI dashboard), everything as a service principal. The app is hosted on Azure Container Apps
-> and reads the same data. PROD on the course account is 🔜.
-> Definitions, the acceptance criteria K1–K4, the decisions D1–D17 and the data sources are in
-> [section 11](#11-design-decisions-and-definitions) – code comments refer to it by section number.
-
 The question the platform answers:
 
 > **"Will the daily PM10 / PM2.5 limit be exceeded tomorrow in city Y, and how sure is that?"**
@@ -21,129 +14,33 @@ Three repositories, one product:
 |---|---|---|
 | **`smog-cast-dbr`** (this one) | the data pipeline: one wheel per step (`packages/*`), the declarative stream pipeline, the Azure Function that polls the GIOŚ API, the Asset Bundle (Jobs, pipeline, dashboard), CI/CD | `databricks bundle deploy`, from a laptop or GitHub Actions |
 | **`smog-cast-terraform`** | everything around the pipeline: Unity Catalog objects, Key Vault and secret scope, service principals, groups for RLS/CLS, the function app and its storage, the SQL Warehouse settings, the app's hosting | `terraform apply`, by a person |
-| **`smog-cast-app`** | the web app (Reflex): forecast panel and the AI assistant (text-to-SQL with guardrails + RAG) | a container image, GitHub Actions |
+| **`smog-cast-app`** | the web app (Reflex): forecast pages and the AI assistant (deterministic forecast answers + RAG over the documents) | a container image, GitHub Actions |
 
-```mermaid
-flowchart LR
-    subgraph ext[Public sources]
-        GIOS[GIOŚ<br/>archive xlsx + live API]
-        OM[Open-Meteo<br/>forecast archives + tomorrow]
-        DOCS[regulations, EU directives,<br/>GIOŚ and WHO guidance]
-    end
+The whole infrastructure (DEV):
 
-    subgraph azure[Azure – smog-cast-terraform]
-        FN[Azure Function gios_poller<br/>hourly, managed identity]
-        ST[(storage account<br/>container live)]
-        KV[Key Vault<br/>secret scope smogcast]
-        CA[Container Apps<br/>the app, one replica]
-    end
-
-    subgraph dbx[Databricks workspace – smog-cast-dbr]
-        VOL[(Volumes raw.landing<br/>and raw.landing_live)]
-        JOBS[Lakeflow Jobs<br/>batch · live · fault demo]
-        PIPE[declarative pipeline<br/>smogcast-stream]
-        UC[(Unity Catalog<br/>bronze · silver · gold · ops)]
-        SEC[(gold_secure<br/>RLS/CLS views)]
-        WH[SQL Warehouse<br/>2X-Small, 1 min auto-stop]
-        DASH[AI/BI dashboard]
-    end
-
-    subgraph app[smog-cast-app]
-        UI[Reflex pages]
-        AS[assistant<br/>text-to-SQL + RAG]
-        LLM[language model<br/>OpenAI-compatible API]
-    end
-
-    GIOS --> FN --> ST --> VOL
-    GIOS --> JOBS
-    OM --> JOBS
-    VOL --> PIPE --> UC
-    JOBS --> UC --> SEC --> WH
-    WH --> DASH
-    WH --> UI
-    WH --> AS
-    DOCS --> AS
-    AS <--> LLM
-    KV -. secrets .-> CA
-    CA --- UI
-```
+![The whole infrastructure on DEV: sources and GitHub Actions, the Azure Function and the Lakeflow Jobs, Unity Catalog from bronze to gold_secure, the SQL Warehouse and Key Vault, the dashboard, the app and the language model](images/infrastructure.svg)
 
 Who runs what: the Jobs and the pipeline run as the service principal `sp-smogcast-<env>`, the function writes with a
 managed identity, the app reads as its own service principal with the `analyst` role. No person and no stored key is
-on the data path.
+on the data path. PROD on the course's shared account has no Azure resources of its own: the live Job polls the GIOŚ
+API itself (section 10).
+
+Four pictures (`images/`) describe the system: this one, the two Jobs (sections 3 and 3a) and what happens when
+someone asks the assistant about tomorrow (section 8).
 
 ---
 
 ## 1. Data flow
 
-Three paths meet in the gold layer.
+Three paths meet in the gold layer:
 
-```mermaid
-flowchart LR
-    subgraph src[Sources]
-        ARCH[GIOŚ archive<br/>xlsx 2021–2025]
-        META[GIOŚ metadata<br/>stations and sensors]
-        API[GIOŚ API v1<br/>live readings, registry]
-        OMH[Open-Meteo<br/>forecast archives<br/>short_range 2021+, day_ahead 2024+]
-        OML[Open-Meteo<br/>tomorrow's forecast]
-    end
+| Path | Job | From → to |
+|---|---|---|
+| **A – history and model** | batch (section 3) | the GIOŚ archive and weather-forecast archives → bronze → silver → features → the model → backtest results and the verdict K1–K4 |
+| **B – live** | live, 3 times a day (section 3a) | the GIOŚ API → the stream cleaned by the declarative pipeline → today's features → the saved model → **tomorrow's forecast**, later compared with what was measured |
+| **C – CDC** | live (section 3a) | snapshots of the GIOŚ station registry → changes → an SCD2 table of stations |
 
-    subgraph A[Path A – history and model, batch]
-        BPM[bronze.pm_hourly]
-        BST[bronze.gios_stations<br/>bronze.gios_positions]
-        BWF[bronze.weather_forecast]
-        SPM[silver.pm_hourly]
-        SPD[silver.pm_daily_station<br/>silver.pm_daily_city]
-        SWD[silver.weather_daily]
-        SF[silver.features]
-        MOD[model<br/>baselines, logistic, GBT]
-        GBT[gold.backtest_predictions<br/>gold.backtest_metrics<br/>gold.reliability<br/>gold.acceptance]
-    end
-
-    subgraph B[Path B – live, declarative pipeline on Databricks, step pm-stream locally]
-        FN[Azure Function gios_poller<br/>every hour at :25 UTC]
-        FR[fault_replay<br/>real readings + injected faults]
-        LND[landing_live/gios_live<br/>landing/fault_replay<br/>JSON]
-        BLV[bronze.pm_stream]
-        LATE[ops.pm_late_rejected]
-        QUAR[ops.pm_stream_quarantine]
-        SST[silver.pm_stream<br/>frozen · spike · drift]
-        SFL[silver.features_live]
-        GFC[gold.forecast_tomorrow<br/>gold.forecast_history]
-        GDQ[gold.dq_summary]
-        GMV[gold.measured_daily<br/>gold.forecast_verification]
-    end
-
-    subgraph C[Path C – CDC]
-        SNAP[bronze.station_snapshots]
-        SCD[silver.station_changes<br/>silver.stations SCD2]
-    end
-
-    ARCH --> BPM --> SPM --> SPD --> SF
-    META --> BST --> SPM
-    OMH --> BWF --> SWD --> SF
-    SF --> MOD --> GBT
-    API --> FN --> LND
-    FR --> LND
-    LND --> BLV
-    BLV --> LATE
-    BLV --> QUAR
-    BLV --> SST
-    FN -->|landing_live/gios_registry| SNAP --> SCD --> SST
-    SST --> SFL
-    OML --> BWF
-    SWD --> SFL
-    SFL --> GFC
-    MOD --> GFC
-    BLV & LATE & QUAR & SST --> GDQ
-    SST --> GMV
-    SPD --> GMV
-    GFC --> GMV
-
-    GFC & GBT & GDQ & GMV --> SECV[gold_secure views<br/>RLS / CLS]
-    SECV --> APP[app + assistant<br/>repo smog-cast-app]
-    SECV --> DASH[AI/BI dashboard]
-```
+All gold tables are read through the secured views `gold_secure` (RLS/CLS, section 4a) by the dashboard and the app.
 
 **Why it is built this way:**
 - **The model is tested where it is used.** The backtest covers 2021–2025 in the same 10 cities it forecasts for.
@@ -158,24 +55,16 @@ flowchart LR
 
 ## 2. Wheels and Jobs (every step is its own wheel)
 
-```mermaid
-flowchart TB
-    CORE["smogcast-core<br/>config · Spark session · storage · DQ · runner · time CET/UTC · gold data dictionary"]
-
-    subgraph steps[Step wheels – each with its own entry point --step]
-        ING["smogcast-ingest<br/>gios-archive · weather-forecast-history · gios-live<br/>gios-registry · weather-forecast-live · fault-replay"]
-        BRZ["smogcast-bronze<br/>station-meta · pm-hourly<br/>weather-forecast · station-snapshots"]
-        SCL["smogcast-silver-clean<br/>pm-hourly · pm-stream (local only) · stations-scd2<br/>fault-reset · live-reset"]
-        STR["smogcast-silver-transform<br/>pm-daily · weather-daily · features · features-live · pm-daily-live"]
-        MDL["smogcast-model<br/>train · backtest · forecast"]
-        GLD["smogcast-gold<br/>dq-summary · measured-daily · governance"]
-    end
-
-    CLI["smogcast-cli<br/>local only: run-batch / run-live / run-fault-demo"]
-
-    CORE --> ING & BRZ & SCL & STR & MDL & GLD
-    ING & BRZ & SCL & STR & MDL & GLD --> CLI
-```
+| Wheel | Steps (`--step`) |
+|---|---|
+| `smogcast-core` | no steps – shared code: configuration, Spark session, storage, data-quality rules, runner, CET/UTC time, gold data dictionary |
+| `smogcast-ingest` | `gios-archive`, `weather-forecast-history`, `gios-live`, `gios-registry`, `weather-forecast-live`, `fault-replay` |
+| `smogcast-bronze` | `station-meta`, `pm-hourly`, `weather-forecast`, `station-snapshots` |
+| `smogcast-silver-clean` | `pm-hourly`, `pm-stream` (local only), `stations-scd2`, `fault-reset`, `live-reset` |
+| `smogcast-silver-transform` | `pm-daily`, `weather-daily`, `features`, `features-live`, `pm-daily-live` |
+| `smogcast-model` | `train`, `backtest`, `forecast` |
+| `smogcast-gold` | `dq-summary`, `measured-daily`, `governance` |
+| `smogcast-cli` | local only: `run-batch`, `run-live`, `run-fault-demo` – the same orders as the Jobs |
 
 | Where | Who runs the steps | How |
 |---|---|---|
@@ -190,29 +79,21 @@ namespace is `smogcast.*` (PEP 420). Transformations are pure functions DataFram
 `(Context) -> None` in its package's `STEPS` registry; everything that depends on the environment lives in
 `smogcast-core` and `conf/<env>.yaml`.
 
-## 3. Task graph of the batch Job (path A)
+## 3. Batch Job: history → the trained model (path A)
 
-```mermaid
-flowchart LR
-    A1[ingest<br/>gios-archive] --> B1[bronze<br/>station-meta]
-    A1 --> B2[bronze<br/>pm-hourly]
-    A2[ingest<br/>weather-forecast-history] --> B3[bronze<br/>weather-forecast]
-    B1 --> C1[silver-clean<br/>pm-hourly]
-    B2 --> C1
-    C1 --> D1[silver-transform<br/>pm-daily]
-    B3 --> D2[silver-transform<br/>weather-daily]
-    D1 --> D3[silver-transform<br/>features]
-    D2 --> D3
-    D3 --> E1[model<br/>train] --> E2[model<br/>backtest]
-    D1 --> G1[gold<br/>measured-daily]
-    E2 --> G2[gold<br/>governance]
-    G1 --> G2
-```
+Run by hand when the model has to be (re)built – about one hour. How information flows through it:
 
-The same order is in `BATCH_ORDER` in `packages/cli/src/smogcast/cli/main.py` – both places change together (the test
-`packages/cli/tests/test_cli.py` checks it). On DEV the Job takes about one hour, 35 minutes of it training.
+![The batch Job: the GIOŚ archive and weather-forecast archives → bronze → silver → features → train 2021–23, choose on 2024, refit 2021–24, test on 2025 → gold results and the saved model](images/batch-job.svg)
 
-## 3a. Task graph of the live Job (paths B and C)
+- **The saved final model is the bridge to the live Job** (section 3a): every forecast loads it, the same model that
+  was judged on the test year.
+- The weather for training comes from fresh short-range forecasts; for validation and test from **real forecasts
+  issued the day before** (D7), so the 2025 result matches what the model really gets.
+- The last task, `gold governance`, documents the gold tables and rebuilds the secured views (section 4a).
+- The tasks follow `BATCH_ORDER` in `packages/cli/src/smogcast/cli/main.py` – both places change together (the test
+  `packages/cli/tests/test_cli.py` checks it). On DEV the Job takes about one hour, 35 minutes of it training.
+
+## 3a. Live Job: three runs a day → tomorrow's forecast (paths B and C)
 
 **The GIOŚ API is polled by an Azure Function, not by the Job.** The function `gios_poller` writes a registry
 snapshot and a batch of readings to the external volume `raw.landing_live` every hour at :25 UTC. **The Job runs 3
@@ -223,30 +104,26 @@ times a day** – **10:30 UTC = 11:30 CET** (the official forecast: every model 
 one, so the cluster starts 3 times a day instead of 24. Locally the two polls are the steps `ingest gios-registry` and
 `ingest gios-live` (`smogcast run-live`, `LIVE_ORDER`) – the same logic (`smogcast.ingest.live_poll`).
 
-```mermaid
-flowchart LR
-    FN[Azure Function gios_poller<br/>:25 UTC – outside Databricks] -->|gios_registry/| R2
-    FN -->|gios_live/ – files wait for the Job| L2
-    R2[bronze<br/>station-snapshots] --> R3[silver-clean<br/>stations-scd2]
-    L2[pipeline smogcast-stream<br/>locally: silver-clean pm-stream]
-    R3 --> L2
-    W1[ingest<br/>weather-forecast-live] --> W2[bronze<br/>weather-forecast] --> W3[silver-transform<br/>weather-daily]
-    L2 --> F1[silver-transform<br/>features-live]
-    W3 --> F1
-    F1 --> F2[model<br/>forecast]
-    L2 --> Q1[gold<br/>dq-summary]
-    L2 --> PD[silver-transform<br/>pm-daily-live]
-    PD --> MD[gold<br/>measured-daily]
-    F2 --> MD
-    F2 --> GV[gold<br/>governance]
-    Q1 --> GV
-    MD --> GV
-    GV --> DR[dashboard_refresh<br/>Databricks only]
-```
+How information flows through one run:
 
-The last task `dashboard_refresh` (`dashboard_task`) recomputes the AI/BI dashboard, so after every run it opens with
-current numbers. Every task of every Job has 2 retries 10 minutes apart and a time limit; a run that still fails
-e-mails `var.notification_email`.
+![The live Job: the GIOŚ API and tomorrow's weather → bronze → the cleaned stream, stations SCD2, daily weather → today's features → the saved model → forecast_tomorrow, verification, data quality; three runs a day](images/live-job.svg)
+
+- **The forecast:** today's features go through the saved model → a probability per city and pollutant for tomorrow
+  in `gold.forecast_tomorrow` (the newest run) and `gold.forecast_history` (every run, labelled – section 7).
+- **The check:** once a day is over, its measured daily means (`gold.measured_daily`) are compared with the official
+  forecast for it (`gold.forecast_verification`) – the live Brier score.
+- Readings that break the rules land in `ops.pm_stream_quarantine` and `ops.pm_late_rejected`, never in silver
+  (section 3b).
+- The last task `dashboard_refresh` (`dashboard_task`) recomputes the AI/BI dashboard, so after every run it opens
+  with current numbers. Every task of every Job has 2 retries 10 minutes apart and a time limit; a run that still
+  fails e-mails `var.notification_email`.
+
+**One first task per Job.** Every task installs `smogcast-core` and its step wheel on the Job's cluster, and
+`smogcast-core` is not on PyPI. When two first tasks installed at the same time on a fresh cluster, the step wheel was
+once resolved before `smogcast-core` was there; the cluster remembers a failed install, so the retries failed too
+(DEV, 2026-10-13 23:30 UTC, no forecast from that run). So the weather task waits for the first task (live Job:
+`bronze_station_snapshots`, on PROD `ingest_gios_registry` before it; batch Job: `ingest_gios_archive`) – an install
+order, not a data dependency; `test_every_job_starts_with_one_task` keeps it so.
 
 **Data-quality demo** (`smogcast run-fault-demo`): `fault-reset` → `fault-replay` → `station-snapshots` →
 `stations-scd2` → `pm-stream` → `dq-summary` – the same faults from scratch every time; the `live` source is not
@@ -263,16 +140,10 @@ On Databricks the stream is cleaned by a Lakeflow declarative pipeline
 resource [`resources/pipeline_smogcast_stream.yml`](resources/pipeline_smogcast_stream.yml)), started by the live Job
 (task `stream_pipeline`). Locally the step `silver-clean pm-stream` computes the same tables.
 
-```mermaid
-flowchart LR
-    LG[landing_live/gios_live] -->|Auto Loader| BR[bronze.pm_stream<br/>streaming table]
-    LF[landing/fault_replay] -->|Auto Loader| BR
-    BR --> RD[stream_readings<br/>view, 1 row per reading]
-    RD --> LT[ops.pm_late_rejected]
-    RD --> QR[ops.pm_stream_quarantine]
-    RD --> AC[stream_accepted<br/>rules that DROP]
-    AC --> SV[silver.pm_stream<br/>rules that WARN]
-```
+The flow inside: Auto Loader reads the files of `landing_live/gios_live` (and `landing/fault_replay`) into the
+streaming table `bronze.pm_stream`; the view `stream_readings` keeps one row per reading; from it, late readings go to
+`ops.pm_late_rejected`, broken ones to `ops.pm_stream_quarantine`, and the rest – through the rules that drop
+(`stream_accepted`) and the rules that only flag – to `silver.pm_stream`.
 
 | Expectation | Where | Mode | What it catches |
 |---|---|---|---|
@@ -463,32 +334,8 @@ The app is a separate repository and a separate deployment. This repository is i
 contract**; nothing in the app writes to the pipeline's tables. State of the app on 2026-10-12: all pages and the
 assistant run on Azure Container Apps against the DEV workspace ✅, and locally in Docker.
 
-```mermaid
-flowchart LR
-    subgraph pipeline[this repo]
-        SEC[(gold_secure views<br/>10 tables)]
-        CON[data contract<br/>cities, thresholds, model,<br/>gold_dictionary, schema.py]
-    end
-
-    subgraph appr[smog-cast-app]
-        CC[copy of the contract<br/>with checksums]
-        GR[GoldReader<br/>guardrails before every query]
-        PG[Reflex pages<br/>Info · Tomorrow · City ·<br/>Model · Data quality]
-        AS[Assistant]
-        IDX[(knowledge base index<br/>436 passages + vectors)]
-        KB[docs/rag + official sources<br/>+ gold dictionary]
-    end
-
-    WH[SQL Warehouse]
-    LLM[language model<br/>OpenAI-compatible API]
-
-    SEC --> WH --> GR
-    GR --> PG
-    GR --> AS
-    CON -. copied .-> CC
-    KB -->|tools/build_index.py| IDX --> AS
-    AS <--> LLM
-```
+The pages (Info · Tomorrow · City · Model · Data quality · Assistant) read the `gold_secure` views through the SQL
+Warehouse; the assistant also has a knowledge-base index (documents + the gold data dictionary) and a language model.
 
 **Data access.** The app reads `<catalog>.gold_secure.<table>` through the SQL Warehouse
 (`databricks-sql-connector`) – no Spark and no Java in its image. Locally it uses the author's short-lived token; when
@@ -497,31 +344,26 @@ hosted it signs in as its own service principal `sp-smogcast-app-<env>` (OAuth m
 the views (DuckDB) is the fallback when the warehouse does not answer, and the interface says so; the copy is not in
 the hosted image. Every view with data shows its SQL.
 
-**The assistant.** Rules settle the certain cases; a language model handles the rest and never produces a number:
+**The assistant.** Rules settle the certain cases; a language model only classifies the unclear ones and answers
+from the documents – **it never produces a number**. What happens when someone asks in the Assistant tab whether
+there will be smog tomorrow in a city:
 
-```mermaid
-flowchart LR
-    Q[question + conversation history] --> RU{rules<br/>certain cases}
-    RU -->|system internals, prompt injection| IN[refusal]
-    RU -->|greeting| GRT[greeting with a hint]
-    RU -->|gold column or table| DI[gold data dictionary<br/>deterministic]
-    RU -->|city + tomorrow| F
-    RU -->|uncertain or a follow-up| LM[language model<br/>intent as JSON + the question rewritten]
-    LM --> F[deterministic answer<br/>forecast_tomorrow + calibration + run kind]
-    LM --> S[model writes SQL<br/>schema + column descriptions] --> G[guardrails<br/>one SELECT, listed gold tables, LIMIT] --> SP[SQL Warehouse<br/>gold_secure] --> M1[model describes the rows]
-    LM --> H[hybrid retrieval<br/>embeddings + BM25] --> M2[model answers only<br/>from the passages, with sources]
-    LM --> O[off topic<br/>refusal with a hint]
-    M1 --> FI[filter<br/>internal names are withheld]
-    M2 --> FI
-```
+![The Assistant tab: routing rules → the gold_secure views → an answer built by code; a language model only for follow-ups and advice](images/assistant-flow.svg)
+
+The answer for Kraków on DEV on 2026-10-14 (one of its two paragraphs – the question names no pollutant, so it gets
+PM10 and PM2.5): "**Kraków, 2026-10-15, PM2.5:** probability of exceeding the daily limit (25 µg/m³) = **12%** – no
+warning (a warning is issued at 50% or more). Yesterday's highest station daily mean: 14 µg/m³, this morning:
+20 µg/m³. Weather forecast for tomorrow: 9.6 °C, wind 2.3 m/s, 1 h of calm wind, precipitation 0.2 mm. How reliable
+such a "12%" is: in the 2025 test year, at forecasts of 10%–20% the limit was exceeded on 18% of days (275 days).
+Model: GBT · official forecast · issued 2026-10-14, 11:44 CET."
 
 | Part | How it works |
 |---|---|
 | routing | rules first (refusals, greetings, dictionary lookups, "city + tomorrow"); the language model classifies the uncertain questions and follow-ups and rewrites them to stand alone ("Understood as: …"); without a model the rules alone still work |
-| text-to-SQL | the model sees the schema of the 10 listed tables with the column descriptions from the gold data dictionary and a glossary of the project's terms; the query passes the guardrails (`sqlglot`: exactly one SELECT, only listed tables, a LIMIT) before it reaches the warehouse; the model then describes the returned rows |
+| forecast answers | deterministic: the forecast, its calibration in 2025 and the K1–K4 verdict read from `gold_secure`, put into sentences by code; the language model is not asked |
 | RAG | documents written for the assistant (`docs/rag/*.md`, English), official sources as downloaded (the Polish regulation, EU directives, GIOŚ and WHO guidance) and the gold data dictionary are cut into passages (about 1,200 characters, 200 overlap), embedded with `paraphrase-multilingual-MiniLM-L12-v2` (Polish questions find English passages) and searched with embeddings + BM25; answers come **only** from the retrieved passages and always show their sources |
 | language model | any OpenAI-compatible endpoint (`SMOGCAST_LLM_*`); today Cerebras `gpt-oss-120b`; forecast answers, dictionary answers, greetings and refusals do not use it at all |
-| checks | 15 control questions on the real model and data (`tools/ask_eval.py`), unit tests of routing and guardrails, a smoke test of every page in 4 views; a test fails when the index is older than the documents |
+| checks | control questions on the real model and data (`tools/ask_eval.py`), unit tests of the routing, a smoke test of every page in 4 views; a test fails when the index is older than the documents |
 
 **The data contract.** The app keeps copies of `conf/cities.yaml`, `conf/thresholds.yaml`, `conf/model.yaml`,
 `conf/gold_dictionary.yaml` and `smogcast/core/schema.py` with checksums; they are changed only here. A new gold table
@@ -545,26 +387,18 @@ this one app and nothing else. The app is hosted on DEV only; it joins PROD when
 The integration test found two bugs the unit tests did not see (the metadata parser on shorter xlsx rows, the number
 of stations in the generator) – that is why it runs in CI.
 
-```mermaid
-flowchart LR
-    subgraph ci[ci.yml – every commit of a pull request]
-        P[commit in a PR] --> L[ruff] --> U[unit tests] --> I[integration test<br/>synthetic data, no internet]
-    end
-    subgraph rel[release-please.yml – merge to main]
-        MM[merge to main] --> RP[release PR<br/>next version + CHANGELOG]
-        RP -->|merged| TAG[tag vX.Y.Z]
-    end
-    subgraph deploy[deploy.yml – by hand, or called for a new tag]
-        M[branch or tag + environment] --> V[bundle validate] --> B[bundle deploy<br/>builds and uploads the wheels] --> T[DEV or PROD<br/>PROD takes only a tag, approved]
-        M --> FZ[build.sh → zip<br/>az functionapp config-zip] --> T
-    end
-    TAG --> M
-```
+The path of a change, three workflows:
 
-The path of a change: a pull request is tested by `ci.yml` and can be tried on DEV ("deploy my branch to dev", one
-shared copy); a merge to `main` updates the release PR; merging the release PR creates the tag, which goes to DEV
-automatically; the same tag goes to PROD by hand, approved on the GitHub Environment `prod`. GitHub Actions signs in
-as the Jobs' service principal through OIDC – no secret is stored. Tests are not rerun on deploy, and wheels are not
+| Workflow | When | What it does |
+|---|---|---|
+| `ci.yml` | every commit of a pull request | `ruff` → unit tests → the integration test (synthetic data, no internet) |
+| `release-please.yml` | a merge to `main` | updates the release PR (next version + `CHANGELOG.md`); merging it creates the tag `vX.Y.Z` and sends it to DEV |
+| `deploy.yml` | by hand, or called for a new tag | `bundle validate` → `bundle deploy` (builds and uploads the wheels) → on DEV also the function's code; PROD takes only a release tag |
+
+A pull request can be tried on DEV before the merge ("deploy my branch to dev", one shared copy); the same tag that
+went to DEV goes to PROD by hand. On DEV GitHub Actions signs in as the Jobs' service principal through OIDC – no
+secret is stored; on the course's PROD, which has no principal for us, with a token kept as a secret of the GitHub
+Environment `prod` (section 10). Tests are not rerun on deploy, and wheels are not
 built separately in CI: `bundle deploy` builds them (section `artifacts`), and a build error stops the deploy before
 anything reaches the workspace.
 

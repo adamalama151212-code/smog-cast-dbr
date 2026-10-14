@@ -1,0 +1,163 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 640" width="1040" height="640" font-family="'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">smogcast: the live Job – three runs a day to tomorrow's forecast</title>
+  <desc id="d">GIOŚ readings and the station registry (polled every hour) and tomorrow's Open-Meteo forecast go to bronze; the declarative pipeline cleans the stream (duplicates, late readings, quarantine, flags), the station registry becomes an SCD2 table, the weather is aggregated per CET day; today's features go through the saved model from the batch Job into forecast_tomorrow and forecast_history; official forecasts are later compared with what was measured. Runs at 00:30, 11:30 (official) and 17:30 CET.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#475569"/></marker>
+    <marker id="ap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#7c3aed"/></marker>
+    <filter id="s" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0f172a" flood-opacity="0.10"/></filter>
+  </defs>
+  <rect width="1040" height="640" rx="16" fill="#ffffff"/>
+  <text x="80" y="40" font-size="11.5" fill="#64748b" font-weight="700" text-anchor="middle" letter-spacing="1.2">SOURCES</text>
+  <text x="241" y="40" font-size="11.5" fill="#b45309" font-weight="700" text-anchor="middle" letter-spacing="1.2">BRONZE</text>
+  <text x="423" y="40" font-size="11.5" fill="#64748b" font-weight="700" text-anchor="middle" letter-spacing="1.2">SILVER</text>
+  <text x="594" y="40" font-size="11.5" fill="#64748b" font-weight="700" text-anchor="middle" letter-spacing="1.2">FEATURES</text>
+  <text x="736" y="40" font-size="11.5" fill="#4f46e5" font-weight="700" text-anchor="middle" letter-spacing="1.2">MODEL</text>
+  <text x="919" y="40" font-size="11.5" fill="#b7791f" font-weight="700" text-anchor="middle" letter-spacing="1.2">GOLD</text>
+  <g filter="url(#s)"><rect x="16" y="70" width="128" height="206" rx="10" fill="#ffffff" stroke="#64748b" stroke-width="1.5"/><path d="M16 80 a10 10 0 0 1 10 -10 h108 a10 10 0 0 1 10 10 v22 h-128 z" fill="#f1f5f9"/></g>
+  <text x="28" y="91" font-size="13" fill="#334155" font-weight="700">GIOŚ API</text>
+  <text x="28" y="121" font-size="12.5" fill="#1e293b">readings of the</text>
+  <text x="28" y="138" font-size="12.5" fill="#1e293b">last ~3 days</text>
+  <text x="28" y="155" font-size="12.5" fill="#1e293b">+ station registry</text>
+  <text x="28" y="189" font-size="12.5" fill="#64748b">polled every hour:</text>
+  <text x="28" y="206" font-size="12.5" fill="#64748b">DEV – Azure</text>
+  <text x="28" y="223" font-size="12.5" fill="#64748b">Function, PROD –</text>
+  <text x="28" y="240" font-size="12.5" fill="#64748b">the Job itself</text>
+  <g filter="url(#s)"><rect x="16" y="296" width="128" height="76" rx="10" fill="#ffffff" stroke="#64748b" stroke-width="1.5"/><path d="M16 306 a10 10 0 0 1 10 -10 h108 a10 10 0 0 1 10 10 v22 h-128 z" fill="#f1f5f9"/></g>
+  <text x="28" y="317" font-size="13" fill="#334155" font-weight="700">Open-Meteo</text>
+  <text x="28" y="347" font-size="12.5" fill="#1e293b">the forecast for</text>
+  <text x="28" y="364" font-size="12.5" fill="#1e293b">tomorrow</text>
+  <g filter="url(#s)"><rect x="166" y="70" width="150" height="110" rx="10" fill="#ffffff" stroke="#b45309" stroke-width="1.5"/><path d="M166 80 a10 10 0 0 1 10 -10 h130 a10 10 0 0 1 10 10 v22 h-150 z" fill="#fdebd3"/></g>
+  <text x="178" y="91" font-size="12.5" fill="#7c3a06" font-weight="700">pm_stream</text>
+  <text x="178" y="121" font-size="12.5" fill="#1e293b">every delivery,</text>
+  <text x="178" y="138" font-size="12.5" fill="#1e293b">re-sent ones too</text>
+  <text x="178" y="155" font-size="12.5" fill="#64748b">Auto Loader</text>
+  <g filter="url(#s)"><rect x="166" y="200" width="150" height="76" rx="10" fill="#ffffff" stroke="#b45309" stroke-width="1.5"/><path d="M166 210 a10 10 0 0 1 10 -10 h130 a10 10 0 0 1 10 10 v22 h-150 z" fill="#fdebd3"/></g>
+  <text x="178" y="221" font-size="12.5" fill="#7c3a06" font-weight="700">station_snapshots</text>
+  <text x="178" y="251" font-size="12.5" fill="#1e293b">registry snapshots</text>
+  <g filter="url(#s)"><rect x="166" y="296" width="150" height="76" rx="10" fill="#ffffff" stroke="#b45309" stroke-width="1.5"/><path d="M166 306 a10 10 0 0 1 10 -10 h130 a10 10 0 0 1 10 10 v22 h-150 z" fill="#fdebd3"/></g>
+  <text x="178" y="317" font-size="12.5" fill="#7c3a06" font-weight="700">weather_forecast</text>
+  <text x="178" y="347" font-size="12.5" fill="#1e293b">hourly, for D+1</text>
+  <g filter="url(#s)"><rect x="338" y="70" width="170" height="110" rx="10" fill="#ffffff" stroke="#64748b" stroke-width="1.5"/><path d="M338 80 a10 10 0 0 1 10 -10 h150 a10 10 0 0 1 10 10 v22 h-170 z" fill="#eef0f3"/></g>
+  <text x="350" y="91" font-size="13" fill="#334155" font-weight="700">cleaned stream</text>
+  <text x="350" y="121" font-size="12.5" fill="#1e293b">declarative pipeline:</text>
+  <text x="350" y="138" font-size="12.5" fill="#1e293b">duplicates, late,</text>
+  <text x="350" y="155" font-size="12.5" fill="#1e293b">quarantine, flags</text>
+  <text x="350" y="172" font-size="12.5" fill="#64748b">rejected rows → ops</text>
+  <g filter="url(#s)"><rect x="338" y="200" width="170" height="76" rx="10" fill="#ffffff" stroke="#64748b" stroke-width="1.5"/><path d="M338 210 a10 10 0 0 1 10 -10 h150 a10 10 0 0 1 10 10 v22 h-170 z" fill="#eef0f3"/></g>
+  <text x="350" y="221" font-size="13" fill="#334155" font-weight="700">stations, SCD2</text>
+  <text x="350" y="251" font-size="12.5" fill="#1e293b">registry changes (CDC)</text>
+  <g filter="url(#s)"><rect x="338" y="296" width="170" height="76" rx="10" fill="#ffffff" stroke="#64748b" stroke-width="1.5"/><path d="M338 306 a10 10 0 0 1 10 -10 h150 a10 10 0 0 1 10 10 v22 h-170 z" fill="#eef0f3"/></g>
+  <text x="350" y="317" font-size="12.5" fill="#334155" font-weight="700">weather_daily</text>
+  <text x="350" y="347" font-size="12.5" fill="#1e293b">per CET day</text>
+  <g filter="url(#s)"><rect x="530" y="70" width="128" height="302" rx="10" fill="#ffffff" stroke="#64748b" stroke-width="1.5"/><path d="M530 80 a10 10 0 0 1 10 -10 h108 a10 10 0 0 1 10 10 v22 h-128 z" fill="#eef0f3"/></g>
+  <text x="542" y="91" font-size="12.5" fill="#334155" font-weight="700">features_live</text>
+  <text x="542" y="121" font-size="12.5" fill="#1e293b">of today,</text>
+  <text x="542" y="138" font-size="12.5" fill="#1e293b">per city:</text>
+  <text x="542" y="155" font-size="12.5" fill="#1e293b">• yesterday</text>
+  <text x="542" y="172" font-size="12.5" fill="#1e293b">• this morning</text>
+  <text x="542" y="189" font-size="12.5" fill="#1e293b">• tomorrow’s</text>
+  <text x="542" y="206" font-size="12.5" fill="#1e293b">  weather</text>
+  <g filter="url(#s)"><rect x="680" y="70" width="112" height="110" rx="10" fill="#ffffff" stroke="#4f46e5" stroke-width="1.5"/><path d="M680 80 a10 10 0 0 1 10 -10 h92 a10 10 0 0 1 10 10 v22 h-112 z" fill="#e8e7fd"/></g>
+  <text x="692" y="91" font-size="13" fill="#3730a3" font-weight="700">saved model</text>
+  <text x="692" y="121" font-size="12.5" fill="#1e293b">the final model</text>
+  <text x="692" y="138" font-size="12.5" fill="#1e293b">from the batch</text>
+  <text x="692" y="155" font-size="12.5" fill="#1e293b">Job</text>
+  <g filter="url(#s)"><rect x="814" y="70" width="210" height="110" rx="10" fill="#ffffff" stroke="#b7791f" stroke-width="1.5"/><path d="M814 80 a10 10 0 0 1 10 -10 h190 a10 10 0 0 1 10 10 v22 h-210 z" fill="#fdf3d7"/></g>
+  <text x="826" y="91" font-size="12.5" fill="#7a4f0c" font-weight="700">forecast_tomorrow</text>
+  <text x="826" y="121" font-size="12.5" fill="#1e293b">probability per city and</text>
+  <text x="826" y="138" font-size="12.5" fill="#1e293b">pollutant, warning at ≥ 50%;</text>
+  <text x="826" y="155" font-size="12.5" fill="#1e293b">every run also kept in</text>
+  <text x="826" y="172" font-size="12.5" fill="#1e293b">forecast_history</text>
+  <g filter="url(#s)"><rect x="814" y="200" width="210" height="76" rx="10" fill="#ffffff" stroke="#b7791f" stroke-width="1.5"/><path d="M814 210 a10 10 0 0 1 10 -10 h190 a10 10 0 0 1 10 10 v22 h-210 z" fill="#fdf3d7"/></g>
+  <text x="826" y="221" font-size="12.5" fill="#7a4f0c" font-weight="700">forecast_verification</text>
+  <text x="826" y="251" font-size="12.5" fill="#1e293b">official forecast vs the day</text>
+  <text x="826" y="268" font-size="12.5" fill="#1e293b">as it was measured</text>
+  <g filter="url(#s)"><rect x="814" y="296" width="210" height="76" rx="10" fill="#ffffff" stroke="#b7791f" stroke-width="1.5"/><path d="M814 306 a10 10 0 0 1 10 -10 h190 a10 10 0 0 1 10 10 v22 h-210 z" fill="#fdf3d7"/></g>
+  <text x="826" y="317" font-size="12.5" fill="#7a4f0c" font-weight="700">dq_summary</text>
+  <text x="826" y="347" font-size="12.5" fill="#1e293b">stream quality per source,</text>
+  <text x="826" y="364" font-size="12.5" fill="#1e293b">from the cleaned stream</text>
+  <line x1="144" y1="125" x2="162" y2="125" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="144" y1="238" x2="162" y2="238" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="144" y1="334" x2="162" y2="334" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="316" y1="125" x2="334" y2="125" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="316" y1="238" x2="334" y2="238" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="316" y1="334" x2="334" y2="334" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="423" y1="200" x2="423" y2="184" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="508" y1="125" x2="526" y2="125" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="508" y1="334" x2="526" y2="334" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="658" y1="125" x2="676" y2="125" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="792" y1="125" x2="810" y2="125" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="919" y1="180" x2="919" y2="196" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="16" y="400" width="1008" height="40" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="520" y="425" font-size="13" fill="#334155" font-weight="600" text-anchor="middle">gold → the gold_secure views (RLS/CLS) → the AI/BI dashboard and the app, refreshed at the end of every run</text>
+  <line x1="919" y1="372" x2="919" y2="396" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <text x="16" y="478" font-size="13" fill="#334155" font-weight="700">Three runs a day – CET, the project’s clock (UTC in brackets)</text>
+  <line x1="60" y1="520" x2="1000" y2="520" stroke="#94a3b8" stroke-width="2"/>
+  <line x1="60.0" y1="514" x2="60.0" y2="526" stroke="#94a3b8"/>
+  <text x="60.0" y="542" font-size="11" fill="#64748b" text-anchor="middle">00:00</text>
+  <circle cx="76.3" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="99.2" y1="517" x2="99.2" y2="523" stroke="#94a3b8"/>
+  <circle cx="115.5" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="138.3" y1="517" x2="138.3" y2="523" stroke="#94a3b8"/>
+  <circle cx="154.7" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="177.5" y1="517" x2="177.5" y2="523" stroke="#94a3b8"/>
+  <circle cx="193.8" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="216.7" y1="517" x2="216.7" y2="523" stroke="#94a3b8"/>
+  <circle cx="233.0" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="255.8" y1="517" x2="255.8" y2="523" stroke="#94a3b8"/>
+  <circle cx="272.2" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="295.0" y1="514" x2="295.0" y2="526" stroke="#94a3b8"/>
+  <text x="295.0" y="542" font-size="11" fill="#64748b" text-anchor="middle">06:00</text>
+  <circle cx="311.3" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="334.2" y1="517" x2="334.2" y2="523" stroke="#94a3b8"/>
+  <circle cx="350.5" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="373.3" y1="517" x2="373.3" y2="523" stroke="#94a3b8"/>
+  <circle cx="389.7" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="412.5" y1="517" x2="412.5" y2="523" stroke="#94a3b8"/>
+  <circle cx="428.8" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="451.7" y1="517" x2="451.7" y2="523" stroke="#94a3b8"/>
+  <circle cx="468.0" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="490.8" y1="517" x2="490.8" y2="523" stroke="#94a3b8"/>
+  <circle cx="507.2" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="530.0" y1="514" x2="530.0" y2="526" stroke="#94a3b8"/>
+  <text x="530.0" y="542" font-size="11" fill="#64748b" text-anchor="middle">12:00</text>
+  <circle cx="546.3" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="569.2" y1="517" x2="569.2" y2="523" stroke="#94a3b8"/>
+  <circle cx="585.5" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="608.3" y1="517" x2="608.3" y2="523" stroke="#94a3b8"/>
+  <circle cx="624.7" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="647.5" y1="517" x2="647.5" y2="523" stroke="#94a3b8"/>
+  <circle cx="663.8" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="686.7" y1="517" x2="686.7" y2="523" stroke="#94a3b8"/>
+  <circle cx="703.0" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="725.8" y1="517" x2="725.8" y2="523" stroke="#94a3b8"/>
+  <circle cx="742.2" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="765.0" y1="514" x2="765.0" y2="526" stroke="#94a3b8"/>
+  <text x="765.0" y="542" font-size="11" fill="#64748b" text-anchor="middle">18:00</text>
+  <circle cx="781.3" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="804.2" y1="517" x2="804.2" y2="523" stroke="#94a3b8"/>
+  <circle cx="820.5" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="843.3" y1="517" x2="843.3" y2="523" stroke="#94a3b8"/>
+  <circle cx="859.7" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="882.5" y1="517" x2="882.5" y2="523" stroke="#94a3b8"/>
+  <circle cx="898.8" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="921.7" y1="517" x2="921.7" y2="523" stroke="#94a3b8"/>
+  <circle cx="938.0" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="960.8" y1="517" x2="960.8" y2="523" stroke="#94a3b8"/>
+  <circle cx="977.2" cy="520" r="2.2" fill="#cbd5e1"/>
+  <line x1="1000.0" y1="514" x2="1000.0" y2="526" stroke="#94a3b8"/>
+  <text x="1000.0" y="542" font-size="11" fill="#64748b" text-anchor="middle">24:00</text>
+  <text x="1000" y="508" font-size="11" fill="#64748b" text-anchor="end">· GIOŚ polled every hour</text>
+  <circle cx="79.6" cy="520" r="8" fill="#334155" stroke="#ffffff" stroke-width="2"/>
+  <text x="73.58333333333333" y="566" font-size="12.5" fill="#334155" font-weight="700" text-anchor="start">00:30 (23:30 UTC)</text>
+  <text x="73.58333333333333" y="583" font-size="12.5" fill="#1e293b" text-anchor="start">closes yesterday: measured</text>
+  <text x="73.58333333333333" y="600" font-size="12.5" fill="#1e293b" text-anchor="start">means, forecasts checked</text>
+  <circle cx="510.4" cy="520" r="8" fill="#047857" stroke="#ffffff" stroke-width="2"/>
+  <text x="510.4166666666667" y="566" font-size="12.5" fill="#047857" font-weight="700" text-anchor="middle">11:30 (10:30 UTC)</text>
+  <text x="510.4166666666667" y="583" font-size="12.5" fill="#1e293b" text-anchor="middle">the OFFICIAL forecast</text>
+  <text x="510.4166666666667" y="600" font-size="12.5" fill="#1e293b" text-anchor="middle">for tomorrow</text>
+  <circle cx="745.4" cy="520" r="8" fill="#334155" stroke="#ffffff" stroke-width="2"/>
+  <text x="745.4166666666666" y="566" font-size="12.5" fill="#334155" font-weight="700" text-anchor="middle">17:30 (16:30 UTC)</text>
+  <text x="745.4166666666666" y="583" font-size="12.5" fill="#1e293b" text-anchor="middle">an update – fresher</text>
+  <text x="745.4166666666666" y="600" font-size="12.5" fill="#1e293b" text-anchor="middle">weather forecast</text>
+</svg>
