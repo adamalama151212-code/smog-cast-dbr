@@ -153,7 +153,7 @@ databricks bundle run -t dev smogcast_live         # live → gold.forecast_tomo
 | tests (unit + data quality) in CI | `packages/*/tests`, the integration test, `ci.yml` | ✅ |
 | Asset Bundle + CI/CD to PROD | `databricks.yml`; `deploy.yml` and `release-please.yml` | 🚧 DEV ✅, PROD in progress |
 | a dashboard on gold | the AI/BI dashboard from the bundle (`resources/dashboard_smogcast.yml`, generator `dashboards/make_dashboard.py`): 7 pages on the `gold_secure` views (RLS/CLS for the viewer), refreshed after every run of the live Job (`dashboard_refresh`); the tables `gold.measured_daily` (what was measured) and `gold.forecast_verification` (the official forecast vs the measurement) | ✅ DEV |
-| an AI app (RAG / assistant) | the separate repository `smog-cast-app` (Reflex; deterministic forecast answers + RAG), reads `gold_secure` through a SQL Warehouse as its own service principal (role `analyst`) | ✅ DEV: hosted on Azure Container Apps |
+| an AI app (RAG / assistant) | the separate repository `smog-cast-app` (Reflex; text-to-SQL with guardrails + RAG), reads `gold_secure` through a SQL Warehouse as its own service principal (role `analyst`) | ✅ DEV: hosted on Azure Container Apps |
 | an advanced capability | **CDC** of the station registry → SCD2 | ✅ |
 
 ## Documentation

@@ -1,137 +1,209 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 640" width="960" height="640" font-family="'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif" role="img" aria-labelledby="t d">
-  <title id="t">The Assistant tab: "Will there be smog tomorrow in Kraków?"</title>
-  <desc id="d">1. Routing rules recognise a city and the word tomorrow (no language model). 2. The app reads forecast_tomorrow, reliability and acceptance from the gold_secure views through the SQL Warehouse, as its own principal with the analyst role. 3. Code builds the sentences: probability, warning, run kind, how often such a probability came true in 2025, the K1-K4 verdict. 4. The answer and the SQL. A language model is used only to rewrite a follow-up question and to write advice from retrieved documents.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 1276" width="960" height="1276" font-family="'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">The Assistant tab: from a question to an answer</title>
+  <desc id="d">The routing rules, with the language model only for follow-ups or unsure cases, send a question to one of five branches: A forecast (no model), B data (the model writes SQL, checked by guardrails, run on the gold_secure views, then described), C knowledge (hybrid search, then the model answers from the passages), D dictionary and E fixed texts (no model). Then the checks on the way out and what the page shows.</desc>
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#475569"/></marker>
     <marker id="ap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#7c3aed"/></marker>
     <filter id="s" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0f172a" flood-opacity="0.10"/></filter>
   </defs>
-
-  <rect width="960" height="640" rx="16" fill="#ffffff"/>
-
-  <!-- the question -->
+  <rect width="960" height="1276" rx="16" fill="#ffffff"/>
   <rect x="16" y="18" width="484" height="54" rx="27" fill="#f1f5f9" stroke="#cbd5e1"/>
-  <circle cx="45" cy="45" r="16" fill="#334155"/>
-  <circle cx="45" cy="40" r="5.5" fill="#ffffff"/>
-  <path d="M35 54 a10 8 0 0 1 20 0 z" fill="#ffffff"/>
-  <text x="72" y="51" font-size="16.5" font-style="italic" font-weight="600" fill="#0f172a">“Will there be smog tomorrow in Kraków?”</text>
-  <text x="518" y="44" font-size="13" fill="#64748b">typed in the Assistant tab of the app</text>
-  <text x="518" y="62" font-size="13" fill="#64748b">(Reflex, hosted on Azure Container Apps)</text>
-  <line x1="118" y1="72" x2="118" y2="106" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
-
-  <!-- 1 routing rules -->
-  <g filter="url(#s)">
-    <rect x="16" y="110" width="204" height="222" rx="12" fill="#ffffff" stroke="#2563eb" stroke-width="1.5"/>
-    <path d="M16 122 a12 12 0 0 1 12 -12 h180 a12 12 0 0 1 12 12 v32 h-204 z" fill="#dbeafe"/>
-  </g>
-  <circle cx="40" cy="132" r="13" fill="#2563eb"/><text x="40" y="137" font-size="14" font-weight="700" fill="#fff" text-anchor="middle">1</text>
-  <text x="61" y="137" font-size="15" font-weight="700" fill="#1e3a8a">Routing rules</text>
-  <text font-size="13" fill="#1e293b">
-    <tspan x="30" y="180">Finds a city and the</tspan>
-    <tspan x="30" y="199">word “tomorrow”</tspan>
-    <tspan x="30" y="222" font-weight="700" fill="#1d4ed8">→ intent: forecast</tspan>
-    <tspan x="30" y="256">A clear case – the</tspan>
-    <tspan x="30" y="275">language model is</tspan>
-    <tspan x="30" y="294">not asked.</tspan>
-  </text>
-
-  <!-- 2 read the data -->
-  <g filter="url(#s)">
-    <rect x="256" y="110" width="204" height="222" rx="12" fill="#ffffff" stroke="#059669" stroke-width="1.5"/>
-    <path d="M256 122 a12 12 0 0 1 12 -12 h180 a12 12 0 0 1 12 12 v32 h-204 z" fill="#d1fae5"/>
-  </g>
-  <circle cx="280" cy="132" r="13" fill="#059669"/><text x="280" y="137" font-size="14" font-weight="700" fill="#fff" text-anchor="middle">2</text>
-  <text x="301" y="137" font-size="15" font-weight="700" fill="#064e3b">Read the data</text>
-  <text font-size="13" fill="#1e293b">
-    <tspan x="270" y="180">SQL Warehouse, views</tspan>
-    <tspan x="270" y="199">gold_secure, as the app’s</tspan>
-    <tspan x="270" y="218">own principal (role</tspan>
-    <tspan x="270" y="237">analyst – RLS/CLS)</tspan>
-  </text>
-  <rect x="268" y="252" width="180" height="68" rx="6" fill="#f0fdf4" stroke="#bbf7d0"/>
-  <text font-size="12.5" font-family="Consolas, 'SFMono-Regular', Menlo, monospace" fill="#065f46">
-    <tspan x="278" y="271">forecast_tomorrow</tspan>
-    <tspan x="278" y="290">reliability</tspan>
-    <tspan x="278" y="309">acceptance</tspan>
-  </text>
-
-  <!-- 3 build the answer -->
-  <g filter="url(#s)">
-    <rect x="496" y="110" width="204" height="222" rx="12" fill="#ffffff" stroke="#2563eb" stroke-width="1.5"/>
-    <path d="M496 122 a12 12 0 0 1 12 -12 h180 a12 12 0 0 1 12 12 v32 h-204 z" fill="#dbeafe"/>
-  </g>
-  <circle cx="520" cy="132" r="13" fill="#2563eb"/><text x="520" y="137" font-size="14" font-weight="700" fill="#fff" text-anchor="middle">3</text>
-  <text x="541" y="137" font-size="15" font-weight="700" fill="#1e3a8a">Build the answer</text>
-  <text font-size="13" fill="#1e293b">
-    <tspan x="510" y="180">Sentences made by code</tspan>
-    <tspan x="510" y="199">from the rows:</tspan>
-    <tspan x="510" y="222">• probability, warning</tspan>
-    <tspan x="510" y="241">• official or update run</tspan>
-    <tspan x="510" y="260">• how often such a %</tspan>
-    <tspan x="521" y="279">came true in 2025</tspan>
-    <tspan x="510" y="298">• the K1–K4 verdict</tspan>
-  </text>
-
-  <!-- 4 answer -->
-  <g filter="url(#s)">
-    <rect x="736" y="110" width="208" height="222" rx="12" fill="#ffffff" stroke="#334155" stroke-width="1.5"/>
-    <path d="M736 122 a12 12 0 0 1 12 -12 h184 a12 12 0 0 1 12 12 v32 h-208 z" fill="#e2e8f0"/>
-  </g>
-  <circle cx="760" cy="132" r="13" fill="#334155"/><text x="760" y="137" font-size="14" font-weight="700" fill="#fff" text-anchor="middle">4</text>
-  <text x="781" y="137" font-size="15" font-weight="700" fill="#0f172a">The answer</text>
-  <text font-size="13" fill="#1e293b">
-    <tspan x="750" y="180" font-weight="700">Kraków, PM2.5, 15 Oct</tspan>
-    <tspan x="750" y="202" font-size="17" font-weight="700" fill="#047857">12% – no warning</tspan>
-    <tspan x="750" y="228">In 2025, at forecasts of</tspan>
-    <tspan x="750" y="247">10–20% the limit was</tspan>
-    <tspan x="750" y="266">exceeded on 18% of days.</tspan>
-    <tspan x="750" y="300" fill="#64748b">+ the SQL it ran</tspan>
-  </text>
-
-  <!-- main path arrows -->
-  <line x1="220" y1="221" x2="252" y2="221" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
-  <line x1="460" y1="221" x2="492" y2="221" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
-  <line x1="700" y1="221" x2="732" y2="221" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
-
-  <!-- follow-up branch -->
-  <rect x="16" y="404" width="444" height="118" rx="12" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="6 4"/>
-  <text x="32" y="430" font-size="14.5" font-weight="700" fill="#5b21b6">Language model – only for a follow-up</text>
-  <text font-size="13" fill="#1e293b">
-    <tspan x="32" y="455">“And in Wrocław?” has no “tomorrow”: the model reads</tspan>
-    <tspan x="32" y="474">the conversation and rewrites the question –</tspan>
-    <tspan x="32" y="493" font-weight="600">“Will there be smog tomorrow in Wrocław?”</tspan>
-    <tspan x="32" y="512">– which then goes through steps 2–4 as usual.</tspan>
-  </text>
-  <path d="M90 332 V400" stroke="#7c3aed" stroke-width="2" stroke-dasharray="6 4" fill="none" marker-end="url(#ap)"/>
-  <text x="98" y="372" font-size="12" fill="#6d28d9">follow-up</text>
-  <path d="M380 404 V336" stroke="#7c3aed" stroke-width="2" stroke-dasharray="6 4" fill="none" marker-end="url(#ap)"/>
-  <text x="388" y="372" font-size="12" fill="#6d28d9">rewritten</text>
-
-  <!-- advice branch -->
-  <rect x="496" y="404" width="448" height="118" rx="12" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="6 4"/>
-  <text x="512" y="430" font-size="14.5" font-weight="700" fill="#5b21b6">Language model – only if advice is asked</text>
-  <text font-size="13" fill="#1e293b">
-    <tspan x="512" y="455">“Should I go running tomorrow?” – passages found in the</tspan>
-    <tspan x="512" y="474">documents (RAG: regulations, GIOŚ and WHO guidance) go</tspan>
-    <tspan x="512" y="493">to the model, which writes advice from them only, with</tspan>
-    <tspan x="512" y="512">sources, under the answer.</tspan>
-  </text>
-  <path d="M598 332 V400" stroke="#7c3aed" stroke-width="2" stroke-dasharray="6 4" fill="none" marker-end="url(#ap)"/>
-  <text x="606" y="372" font-size="12" fill="#6d28d9">advice asked</text>
-  <path d="M840 404 V336" stroke="#7c3aed" stroke-width="2" stroke-dasharray="6 4" fill="none" marker-end="url(#ap)"/>
-  <text x="848" y="372" font-size="12" fill="#6d28d9">advice</text>
-
-  <!-- legend -->
-  <line x1="16" y1="552" x2="944" y2="552" stroke="#e2e8f0"/>
-  <line x1="20" y1="580" x2="56" y2="580" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
-  <text x="64" y="585" font-size="12.5" fill="#334155">every question</text>
-  <line x1="170" y1="580" x2="206" y2="580" stroke="#7c3aed" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#ap)"/>
-  <text x="214" y="585" font-size="12.5" fill="#334155">only when needed</text>
-  <rect x="340" y="572" width="16" height="16" rx="4" fill="#dbeafe" stroke="#2563eb"/>
-  <text x="362" y="585" font-size="12.5" fill="#334155">rules and code</text>
-  <rect x="468" y="572" width="16" height="16" rx="4" fill="#d1fae5" stroke="#059669"/>
-  <text x="490" y="585" font-size="12.5" fill="#334155">data</text>
-  <rect x="534" y="572" width="16" height="16" rx="4" fill="#faf5ff" stroke="#7c3aed"/>
-  <text x="556" y="585" font-size="12.5" fill="#334155">language model</text>
-  <text x="20" y="620" font-size="13" font-weight="700" fill="#0f172a">The language model never produces a number.</text>
+  <circle cx="45" cy="45" r="16" fill="#334155"/><circle cx="45" cy="40" r="5.5" fill="#ffffff"/><path d="M35 54 a10 8 0 0 1 20 0 z" fill="#ffffff"/>
+  <text x="72" y="51" font-size="16.5" fill="#0f172a" font-weight="600" font-style="italic">a question in the Assistant tab</text>
+  <text x="518" y="44" font-size="13" fill="#64748b">Reflex app on Azure Container Apps; the</text>
+  <text x="518" y="62" font-size="13" fill="#64748b">conversation is kept in the server’s memory</text>
+  <line x1="118" y1="72" x2="118" y2="100" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <g filter="url(#s)"><rect x="16" y="104" width="928" height="146" rx="12" fill="#ffffff" stroke="#2563eb" stroke-width="1.5"/></g>
+  <circle cx="40" cy="126" r="12" fill="#2563eb"/>
+  <text x="40" y="130.5" font-size="13" fill="#ffffff" font-weight="700" text-anchor="middle">1</text>
+  <text x="60" y="131" font-size="15" fill="#1e3a8a" font-weight="700">Routing</text>
+  <rect x="28" y="148" width="440" height="87" rx="7" fill="#eff6ff" stroke="#2563eb"/>
+  <rect x="28" y="154" width="3" height="75" rx="1.5" fill="#2563eb"/>
+  <text x="39" y="166" font-size="12.5" fill="#1e293b" font-weight="700">Rules (code) look for key words in English and Polish,</text>
+  <text x="39" y="181" font-size="12.5" fill="#1e293b">in this order: internals → greeting → dictionary →</text>
+  <text x="39" y="196" font-size="12.5" fill="#1e293b">forecast → other → knowledge / data.</text>
+  <text x="39" y="211" font-size="12.5" fill="#1e293b">internals, greeting, dictionary: always the rules alone.</text>
+  <text x="39" y="226" font-size="12.5" fill="#1e293b">The model does not answer → the rules decide.</text>
+  <rect x="492" y="148" width="440" height="87" rx="7" fill="#faf5ff" stroke="#7c3aed" stroke-dasharray="5 4"/>
+  <rect x="492" y="154" width="3" height="75" rx="1.5" fill="#7c3aed"/>
+  <text x="503" y="166" font-size="12.5" fill="#1e293b" font-weight="700">The language model – only for a follow-up or when</text>
+  <text x="503" y="181" font-size="12.5" fill="#1e293b">the rules are unsure: it reads the last 6 messages and</text>
+  <text x="503" y="196" font-size="12.5" fill="#1e293b">returns JSON – the intent + the question rewritten to</text>
+  <text x="503" y="211" font-size="12.5" fill="#1e293b">stand alone: “And in Wrocław?” → “Will there be smog</text>
+  <text x="503" y="226" font-size="12.5" fill="#1e293b">tomorrow in Wrocław?”; the rules check it again.</text>
+  <line x1="114.0" y1="250" x2="114.0" y2="286" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="349.0" y1="250" x2="349.0" y2="286" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="600.0" y1="250" x2="600.0" y2="286" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="836.0" y1="250" x2="836.0" y2="286" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <g filter="url(#s)"><rect x="16" y="290" width="196" height="476" rx="12" fill="#ffffff" stroke="#2563eb" stroke-width="1.5"/></g>
+  <circle cx="36" cy="310" r="12" fill="#2563eb"/>
+  <text x="36" y="314.5" font-size="13" fill="#ffffff" font-weight="700" text-anchor="middle">A</text>
+  <text x="54" y="315" font-size="14" fill="#0f172a" font-weight="700">forecast</text>
+  <text x="30" y="337" font-size="11.5" fill="#2563eb" font-weight="700">no language model</text>
+  <text x="30" y="356" font-size="12" fill="#334155" font-style="italic">“Will there be smog</text>
+  <text x="30" y="371" font-size="12" fill="#334155" font-style="italic">tomorrow in Kraków?”</text>
+  <rect x="26" y="392" width="176" height="72" rx="7" fill="#ecfdf5" stroke="#059669"/>
+  <rect x="26" y="398" width="3" height="60" rx="1.5" fill="#059669"/>
+  <text x="37" y="410" font-size="12" fill="#1e293b">gold_secure views:</text>
+  <text x="37" y="425" font-size="11.5" fill="#065f46" font-family="Consolas, 'SFMono-Regular', Menlo, monospace">forecast_tomorrow</text>
+  <text x="37" y="440" font-size="11.5" fill="#065f46" font-family="Consolas, 'SFMono-Regular', Menlo, monospace">reliability</text>
+  <text x="37" y="455" font-size="11.5" fill="#065f46" font-family="Consolas, 'SFMono-Regular', Menlo, monospace">acceptance</text>
+  <rect x="26" y="472" width="176" height="87" rx="7" fill="#eff6ff" stroke="#2563eb"/>
+  <rect x="26" y="478" width="3" height="75" rx="1.5" fill="#2563eb"/>
+  <text x="37" y="490" font-size="12" fill="#1e293b">sentences built by code:</text>
+  <text x="37" y="505" font-size="12" fill="#1e293b">probability, warning, run</text>
+  <text x="37" y="520" font-size="12" fill="#1e293b">kind, how often such a %</text>
+  <text x="37" y="535" font-size="12" fill="#1e293b">came true in 2025, the</text>
+  <text x="37" y="550" font-size="12" fill="#1e293b">K1–K4 verdict</text>
+  <rect x="26" y="567" width="176" height="72" rx="7" fill="#faf5ff" stroke="#7c3aed" stroke-dasharray="5 4"/>
+  <rect x="26" y="573" width="3" height="60" rx="1.5" fill="#7c3aed"/>
+  <text x="37" y="585" font-size="12" fill="#1e293b">+ advice, if the question</text>
+  <text x="37" y="600" font-size="12" fill="#1e293b">asks for it: branch C adds</text>
+  <text x="37" y="615" font-size="12" fill="#1e293b">“Advice (from the</text>
+  <text x="37" y="630" font-size="12" fill="#1e293b">documents)” below</text>
+  <g filter="url(#s)"><rect x="226" y="290" width="246" height="476" rx="12" fill="#ffffff" stroke="#7c3aed" stroke-width="1.5"/></g>
+  <circle cx="246" cy="310" r="12" fill="#7c3aed"/>
+  <text x="246" y="314.5" font-size="13" fill="#ffffff" font-weight="700" text-anchor="middle">B</text>
+  <text x="264" y="315" font-size="14" fill="#0f172a" font-weight="700">data – text-to-SQL</text>
+  <text x="240" y="337" font-size="11.5" fill="#7c3aed" font-weight="700">language model</text>
+  <text x="240" y="356" font-size="12" fill="#334155" font-style="italic">“How many readings were</text>
+  <text x="240" y="371" font-size="12" fill="#334155" font-style="italic">rejected and why?”</text>
+  <rect x="236" y="392" width="226" height="87" rx="7" fill="#faf5ff" stroke="#7c3aed"/>
+  <rect x="236" y="398" width="3" height="75" rx="1.5" fill="#7c3aed"/>
+  <text x="247" y="410" font-size="12" fill="#1e293b" font-weight="700">1  the model writes one SELECT</text>
+  <text x="247" y="425" font-size="12" fill="#1e293b">from the 10 gold_secure views</text>
+  <text x="247" y="440" font-size="12" fill="#1e293b">with column descriptions, the</text>
+  <text x="247" y="455" font-size="12" fill="#1e293b">cities, what the words mean</text>
+  <text x="247" y="470" font-size="12" fill="#1e293b">and example queries</text>
+  <rect x="236" y="487" width="226" height="72" rx="7" fill="#eff6ff" stroke="#2563eb"/>
+  <rect x="236" y="493" width="3" height="60" rx="1.5" fill="#2563eb"/>
+  <text x="247" y="505" font-size="12" fill="#1e293b" font-weight="700">2  guardrails – a parser</text>
+  <text x="247" y="520" font-size="12" fill="#1e293b">(sqlglot), not the prompt: one</text>
+  <text x="247" y="535" font-size="12" fill="#1e293b">statement, SELECT only, the 10</text>
+  <text x="247" y="550" font-size="12" fill="#1e293b">listed views, LIMIT ≤ 200</text>
+  <rect x="236" y="567" width="226" height="72" rx="7" fill="#ecfdf5" stroke="#059669"/>
+  <rect x="236" y="573" width="3" height="60" rx="1.5" fill="#059669"/>
+  <text x="247" y="585" font-size="12" fill="#1e293b" font-weight="700">3  SQL Warehouse runs it as</text>
+  <text x="247" y="600" font-size="12" fill="#1e293b">the app’s principal, role</text>
+  <text x="247" y="615" font-size="12" fill="#1e293b">analyst (RLS/CLS) – a second,</text>
+  <text x="247" y="630" font-size="12" fill="#1e293b">independent line of defence</text>
+  <rect x="236" y="647" width="226" height="42" rx="7" fill="#faf5ff" stroke="#7c3aed" stroke-dasharray="5 4"/>
+  <rect x="236" y="653" width="3" height="30" rx="1.5" fill="#7c3aed"/>
+  <text x="247" y="665" font-size="12" fill="#1e293b">rejected or failed → the model</text>
+  <text x="247" y="680" font-size="12" fill="#1e293b">writes it again, up to 3 tries</text>
+  <rect x="236" y="697" width="226" height="57" rx="7" fill="#faf5ff" stroke="#7c3aed"/>
+  <rect x="236" y="703" width="3" height="45" rx="1.5" fill="#7c3aed"/>
+  <text x="247" y="715" font-size="12" fill="#1e293b" font-weight="700">4  the model describes the</text>
+  <text x="247" y="730" font-size="12" fill="#1e293b">rows (≤ 50), using only the</text>
+  <text x="247" y="745" font-size="12" fill="#1e293b">numbers in them</text>
+  <g filter="url(#s)"><rect x="486" y="290" width="228" height="476" rx="12" fill="#ffffff" stroke="#7c3aed" stroke-width="1.5"/></g>
+  <circle cx="506" cy="310" r="12" fill="#7c3aed"/>
+  <text x="506" y="314.5" font-size="13" fill="#ffffff" font-weight="700" text-anchor="middle">C</text>
+  <text x="524" y="315" font-size="14" fill="#0f172a" font-weight="700">knowledge – RAG</text>
+  <text x="500" y="337" font-size="11.5" fill="#7c3aed" font-weight="700">language model</text>
+  <text x="500" y="356" font-size="12" fill="#334155" font-style="italic">“What are the EU limits</text>
+  <text x="500" y="371" font-size="12" fill="#334155" font-style="italic">for PM2.5 from 2030?”</text>
+  <rect x="496" y="392" width="208" height="87" rx="7" fill="#eff6ff" stroke="#2563eb"/>
+  <rect x="496" y="398" width="3" height="75" rx="1.5" fill="#2563eb"/>
+  <text x="507" y="410" font-size="12" fill="#1e293b" font-weight="700">1  hybrid search in the app</text>
+  <text x="507" y="425" font-size="12" fill="#1e293b">(no language model):</text>
+  <text x="507" y="440" font-size="12" fill="#1e293b">embeddings (multilingual</text>
+  <text x="507" y="455" font-size="12" fill="#1e293b">MiniLM) + BM25, fused by</text>
+  <text x="507" y="470" font-size="12" fill="#1e293b">reciprocal rank → 6 passages</text>
+  <rect x="496" y="487" width="208" height="87" rx="7" fill="#ecfdf5" stroke="#059669"/>
+  <rect x="496" y="493" width="3" height="75" rx="1.5" fill="#059669"/>
+  <text x="507" y="505" font-size="12" fill="#1e293b">index: 436 passages – texts</text>
+  <text x="507" y="520" font-size="12" fill="#1e293b">for the assistant, official</text>
+  <text x="507" y="535" font-size="12" fill="#1e293b">sources (EU and Polish law,</text>
+  <text x="507" y="550" font-size="12" fill="#1e293b">GIOŚ, WHO, EEA), the gold</text>
+  <text x="507" y="565" font-size="12" fill="#1e293b">data dictionary</text>
+  <rect x="496" y="582" width="208" height="87" rx="7" fill="#faf5ff" stroke="#7c3aed"/>
+  <rect x="496" y="588" width="3" height="75" rx="1.5" fill="#7c3aed"/>
+  <text x="507" y="600" font-size="12" fill="#1e293b" font-weight="700">2  the model answers only</text>
+  <text x="507" y="615" font-size="12" fill="#1e293b">from the passages and cites</text>
+  <text x="507" y="630" font-size="12" fill="#1e293b">them [1], [2]; nothing found</text>
+  <text x="507" y="645" font-size="12" fill="#1e293b">→ “I could not find this</text>
+  <text x="507" y="660" font-size="12" fill="#1e293b">information in the documents.”</text>
+  <g filter="url(#s)"><rect x="728" y="290" width="216" height="171" rx="12" fill="#ffffff" stroke="#2563eb" stroke-width="1.5"/></g>
+  <circle cx="748" cy="310" r="12" fill="#2563eb"/>
+  <text x="748" y="314.5" font-size="13" fill="#ffffff" font-weight="700" text-anchor="middle">D</text>
+  <text x="766" y="315" font-size="14" fill="#0f172a" font-weight="700">dictionary</text>
+  <text x="742" y="337" font-size="11.5" fill="#2563eb" font-weight="700">no language model</text>
+  <text x="742" y="356" font-size="12" fill="#334155" font-style="italic">“What does calm_hours</text>
+  <text x="742" y="371" font-size="12" fill="#334155" font-style="italic">mean?”</text>
+  <rect x="738" y="392" width="196" height="57" rx="7" fill="#eff6ff" stroke="#2563eb"/>
+  <rect x="738" y="398" width="3" height="45" rx="1.5" fill="#2563eb"/>
+  <text x="749" y="410" font-size="12" fill="#1e293b">a column or a table, as</text>
+  <text x="749" y="425" font-size="12" fill="#1e293b">the gold data dictionary</text>
+  <text x="749" y="440" font-size="12" fill="#1e293b">describes it</text>
+  <g filter="url(#s)"><rect x="728" y="475" width="216" height="291" rx="12" fill="#ffffff" stroke="#2563eb" stroke-width="1.5"/></g>
+  <circle cx="748" cy="495" r="12" fill="#2563eb"/>
+  <text x="748" y="499.5" font-size="13" fill="#ffffff" font-weight="700" text-anchor="middle">E</text>
+  <text x="766" y="500" font-size="14" fill="#0f172a" font-weight="700">fixed texts</text>
+  <text x="742" y="522" font-size="11.5" fill="#2563eb" font-weight="700">no language model</text>
+  <rect x="738" y="547" width="196" height="42" rx="7" fill="#eff6ff" stroke="#2563eb"/>
+  <rect x="738" y="553" width="3" height="30" rx="1.5" fill="#2563eb"/>
+  <text x="749" y="565" font-size="12" fill="#1e293b">greeting, off topic (other):</text>
+  <text x="749" y="580" font-size="12" fill="#1e293b">fixed texts</text>
+  <rect x="738" y="597" width="196" height="87" rx="7" fill="#eff6ff" stroke="#2563eb"/>
+  <rect x="738" y="603" width="3" height="75" rx="1.5" fill="#2563eb"/>
+  <text x="749" y="615" font-size="12" fill="#1e293b">internals = a refusal:</text>
+  <text x="749" y="630" font-size="12" fill="#1e293b">questions about the system</text>
+  <text x="749" y="645" font-size="12" fill="#1e293b">and prompt injection are</text>
+  <text x="749" y="660" font-size="12" fill="#1e293b">stopped by the rules before</text>
+  <text x="749" y="675" font-size="12" fill="#1e293b">any model sees them</text>
+  <line x1="114.0" y1="766" x2="114.0" y2="808" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="349.0" y1="766" x2="349.0" y2="808" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="600.0" y1="766" x2="600.0" y2="808" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="836.0" y1="766" x2="836.0" y2="808" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <g filter="url(#s)"><rect x="16" y="812" width="928" height="104" rx="12" fill="#ffffff" stroke="#2563eb" stroke-width="1.5"/></g>
+  <circle cx="40" cy="834" r="12" fill="#2563eb"/>
+  <text x="40" y="838.5" font-size="13" fill="#ffffff" font-weight="700" text-anchor="middle">3</text>
+  <text x="60" y="839" font-size="15" fill="#1e3a8a" font-weight="700">Checks on the way out (code)</text>
+  <rect x="28" y="856" width="440" height="42" rx="7" fill="#eff6ff" stroke="#2563eb"/>
+  <rect x="28" y="862" width="3" height="30" rx="1.5" fill="#2563eb"/>
+  <text x="39" y="874" font-size="12" fill="#1e293b">B and C: an answer that names internal tables, the</text>
+  <text x="39" y="889" font-size="12" fill="#1e293b">catalog, paths or keys is withheld</text>
+  <rect x="492" y="856" width="440" height="42" rx="7" fill="#eff6ff" stroke="#2563eb"/>
+  <rect x="492" y="862" width="3" height="30" rx="1.5" fill="#2563eb"/>
+  <text x="503" y="874" font-size="12" fill="#1e293b">model not answering: 2 retries, then “The language model</text>
+  <text x="503" y="889" font-size="12" fill="#1e293b">is not answering right now…” – A, D and E work without it</text>
+  <line x1="480" y1="916" x2="480" y2="958" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <g filter="url(#s)"><rect x="16" y="962" width="928" height="196" rx="12" fill="#ffffff" stroke="#334155" stroke-width="1.5"/></g>
+  <circle cx="40" cy="984" r="12" fill="#334155"/>
+  <text x="40" y="988.5" font-size="13" fill="#ffffff" font-weight="700" text-anchor="middle">4</text>
+  <text x="60" y="989" font-size="15" fill="#0f172a" font-weight="700">The answer on the page</text>
+  <text x="28" y="1018" font-size="12.5" fill="#1e293b">the text + a label of its source:</text>
+  <rect x="28" y="1028" width="216" height="28" rx="14" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="136" y="1047" font-size="12.5" fill="#2563eb" font-weight="600" text-anchor="middle">A  From the forecast table</text>
+  <rect x="256" y="1028" width="216" height="28" rx="14" fill="#faf5ff" stroke="#7c3aed"/>
+  <text x="364" y="1047" font-size="12.5" fill="#7c3aed" font-weight="600" text-anchor="middle">B  From a database query</text>
+  <rect x="484" y="1028" width="216" height="28" rx="14" fill="#faf5ff" stroke="#7c3aed"/>
+  <text x="592" y="1047" font-size="12.5" fill="#7c3aed" font-weight="600" text-anchor="middle">C  From the documents</text>
+  <rect x="712" y="1028" width="216" height="28" rx="14" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="820" y="1047" font-size="12.5" fill="#2563eb" font-weight="600" text-anchor="middle">D  From the data dictionary</text>
+  <rect x="28" y="1070" width="440" height="72" rx="7" fill="#f8fafc" stroke="#334155"/>
+  <rect x="28" y="1076" width="3" height="60" rx="1.5" fill="#334155"/>
+  <text x="39" y="1088" font-size="12" fill="#1e293b">B, C: “Written by the language model (gpt-oss-120b)”</text>
+  <text x="39" y="1103" font-size="12" fill="#1e293b">rewritten by the model: “Question understood by the</text>
+  <text x="39" y="1118" font-size="12" fill="#1e293b">language model” + the note “Understood as: …”</text>
+  <text x="39" y="1133" font-size="12" fill="#1e293b">notes, e.g. SQL tries the guardrails rejected</text>
+  <rect x="492" y="1070" width="440" height="57" rx="7" fill="#f8fafc" stroke="#334155"/>
+  <rect x="492" y="1076" width="3" height="45" rx="1.5" fill="#334155"/>
+  <text x="503" y="1088" font-size="12" fill="#1e293b">A, B: the panel “SQL query (through the guardrails)”</text>
+  <text x="503" y="1103" font-size="12" fill="#1e293b">B: a table of the rows (up to 50)</text>
+  <text x="503" y="1118" font-size="12" fill="#1e293b">C: “Sources (n)” – the passages it used</text>
+  <line x1="16" y1="1174" x2="944" y2="1174" stroke="#e2e8f0"/>
+  <line x1="20" y1="1194" x2="56" y2="1194" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <text x="64" y="1199" font-size="12.5" fill="#334155">every question</text>
+  <line x1="170" y1="1194" x2="206" y2="1194" stroke="#7c3aed" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#ap)"/>
+  <text x="214" y="1199" font-size="12.5" fill="#334155">only when needed</text>
+  <rect x="340" y="1186" width="16" height="16" rx="4" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="362" y="1199" font-size="12.5" fill="#334155">rules and code</text>
+  <rect x="468" y="1186" width="16" height="16" rx="4" fill="#ecfdf5" stroke="#059669"/>
+  <text x="490" y="1199" font-size="12.5" fill="#334155">data</text>
+  <rect x="534" y="1186" width="16" height="16" rx="4" fill="#faf5ff" stroke="#7c3aed"/>
+  <text x="556" y="1199" font-size="12.5" fill="#334155">language model</text>
+  <text x="20" y="1230" font-size="12.5" fill="#334155">One language model for every use: gpt-oss-120b (Cerebras, an OpenAI-compatible API) – no separate SQL model.</text>
+  <text x="20" y="1252" font-size="13" fill="#0f172a" font-weight="700">The language model never makes up a number: numbers come from the gold_secure views or the quoted documents.</text>
 </svg>
