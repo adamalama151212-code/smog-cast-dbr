@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/adamalama151212-code/smog-cast-dbr/compare/v0.2.0...v0.2.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* **jobs:** start every Job with one task, so smogcast-core is installed before any other wheel ([#4](https://github.com/adamalama151212-code/smog-cast-dbr/issues/4)) ([203445d](https://github.com/adamalama151212-code/smog-cast-dbr/commit/203445db650df0c825bd0ea00ecbcc02c2c1d137))
+
 ## [0.2.0](https://github.com/adamalama151212-code/smog-cast-dbr/compare/v0.1.0...v0.2.0) (2026-10-13)
 
 
