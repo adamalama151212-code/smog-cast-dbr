@@ -116,8 +116,8 @@ docker compose run --rm smogcast pytest -q -p no:logging -m integration         
   tests → integration test.
 - **Deployment** ([`deploy.yml`](.github/workflows/deploy.yml),
   [`release-please.yml`](.github/workflows/release-please.yml)): a branch → DEV by hand; a merge to `main` → the
-  release PR; merging the release PR → the tag `vX.Y.Z` → DEV automatically; the same tag → PROD by hand, with an
-  approval. GitHub signs in without a secret (OIDC).
+  release PR; merging the release PR → the tag `vX.Y.Z` → DEV automatically; the same tag → PROD by hand. On DEV
+  GitHub signs in without a secret (OIDC).
 
 ## Deploying to Databricks
 
@@ -153,7 +153,7 @@ databricks bundle run -t dev smogcast_live         # live → gold.forecast_tomo
 | tests (unit + data quality) in CI | `packages/*/tests`, the integration test, `ci.yml` | ✅ |
 | Asset Bundle + CI/CD to PROD | `databricks.yml`; `deploy.yml` and `release-please.yml` | 🚧 DEV ✅, PROD in progress |
 | a dashboard on gold | the AI/BI dashboard from the bundle (`resources/dashboard_smogcast.yml`, generator `dashboards/make_dashboard.py`): 7 pages on the `gold_secure` views (RLS/CLS for the viewer), refreshed after every run of the live Job (`dashboard_refresh`); the tables `gold.measured_daily` (what was measured) and `gold.forecast_verification` (the official forecast vs the measurement) | ✅ DEV |
-| an AI app (RAG / assistant) | the separate repository `smog-cast-app` (Reflex; text-to-SQL with guardrails + RAG), reads `gold_secure` through a SQL Warehouse as its own service principal (role `analyst`) | ✅ DEV: hosted on Azure Container Apps |
+| an AI app (RAG / assistant) | the separate repository `smog-cast-app` (Reflex; deterministic forecast answers + RAG), reads `gold_secure` through a SQL Warehouse as its own service principal (role `analyst`) | ✅ DEV: hosted on Azure Container Apps |
 | an advanced capability | **CDC** of the station registry → SCD2 | ✅ |
 
 ## Documentation
