@@ -349,6 +349,9 @@ MONTH_COLS = [("month", "Month"), ("pollutant", "Pollutant"), ("smog_days", "Smo
               ("warnings_right", "Model: warnings followed by smog"),
               ("persistence_caught", "\"Tomorrow like today\": smog days that got a warning"),
               ("persistence_right", "\"Tomorrow like today\": warnings followed by smog")]
+# Open-Meteo's data is CC BY 4.0, so the sources are named on the page that shows the forecasts.
+SOURCES = ("**Data:** measurements – GIOŚ (Chief Inspectorate of Environmental Protection); weather forecasts – "
+           "Open-Meteo (CC BY 4.0).")
 NOTE_RLS = ("*What you see depends on who you are: rows by voivodeship and technical columns are filtered by "
             "Unity Catalog (schema `gold_secure`).*")
 
@@ -356,18 +359,19 @@ pages = [
     ("tomorrow", "Tomorrow", [
         text(["# Will the daily limit be exceeded tomorrow?\n",
               "Probability that the **daily mean of the worst station** in the city exceeds the limit "
-              "(PM10 50 µg/m³, PM2.5 25 µg/m³). A warning is issued at 50% or more. ", NOTE_RLS], 0, 0, 6, 2),
-        counter("tomorrow_summary", "warnings", "Warnings for tomorrow", 0, 2, 2, 3),
-        counter("tomorrow_summary", "forecasts", "Cities × pollutants with a forecast", 2, 2, 2, 3),
+              "(PM10 50 µg/m³, PM2.5 25 µg/m³). A warning is issued at 50% or more. ", NOTE_RLS, "\n",
+              SOURCES], 0, 0, 6, 3),
+        counter("tomorrow_summary", "warnings", "Warnings for tomorrow", 0, 3, 2, 3),
+        counter("tomorrow_summary", "forecasts", "Cities × pollutants with a forecast", 2, 3, 2, 3),
         text(["**Run kinds**\n", "- *preliminary* – before 11:30 CET, this morning's readings are not in yet\n",
               "- *official* – first run from 11:30 CET, judged against measurements\n",
-              "- *update* – later run, newer weather forecast"], 4, 2, 2, 3),
+              "- *update* – later run, newer weather forecast"], 4, 3, 2, 3),
         chart("bar", "tomorrow", "city_name", "categorical", "City", "probability_pct", CHANCE,
-              "Chance of an exceedance tomorrow", 0, 5, 6, 7, color=("pollutant", "Pollutant"), group=True,
+              "Chance of an exceedance tomorrow", 0, 6, 6, 7, color=("pollutant", "Pollutant"), group=True,
               y_domain=(0, 100), description="A warning is issued at 50% or more."),
-        counter("tomorrow_limits", "pm10_limit", "PM10 daily limit (µg/m³)", 0, 12, 3, 3),
-        counter("tomorrow_limits", "pm25_limit", "PM2.5 daily limit (µg/m³)", 3, 12, 3, 3),
-        select_filter("city_name", "Cities in the table below (empty = all)", ["tomorrow_inputs"], 0, 15, 2, 2,
+        counter("tomorrow_limits", "pm10_limit", "PM10 daily limit (µg/m³)", 0, 13, 3, 3),
+        counter("tomorrow_limits", "pm25_limit", "PM2.5 daily limit (µg/m³)", 3, 13, 3, 3),
+        select_filter("city_name", "Cities in the table below (empty = all)", ["tomorrow_inputs"], 0, 16, 2, 2,
                       default=["Kraków", "Warszawa", "Wrocław"], multi=True),
         table("tomorrow_inputs", [("city_name", "City"), ("pollutant", "Pollutant"), ("probability_txt", "Chance of exceedance (%)"),
                            ("verdict", "Verdict"), ("run_kind", "Run"), ("issued_cet", "Issued (CET)"),
@@ -375,7 +379,7 @@ pages = [
                            ("this_morning_ug_m3", "This morning – worst station, 00–10 CET (µg/m³)"),
                            ("temperature_c", "Temp. tomorrow (°C)"), ("wind_ms", "Wind (m/s)"),
                            ("calm_hours", "Calm hours"), ("rain_mm", "Rain (mm)"), ("unusable_reason", "Why no forecast")],
-              "Why this forecast – the main inputs", 0, 17, 6, 8),
+              "Why this forecast – the main inputs", 0, 18, 6, 8),
     ]),
     ("forecast_updates", "Forecast updates", [
         text(["# How today's forecast for tomorrow changed\n",
