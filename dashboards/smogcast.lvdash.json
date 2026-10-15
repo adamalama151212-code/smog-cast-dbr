@@ -353,7 +353,7 @@
                 "Probability that the **daily mean of the worst station** in the city exceeds the limit (PM10 50 µg/m³, PM2.5 25 µg/m³). A warning is issued at 50% or more. ",
                 "*What you see depends on who you are: rows by voivodeship and technical columns are filtered by Unity Catalog (schema `gold_secure`).*",
                 "\n",
-                "**Data:** measurements – GIOŚ (Chief Inspectorate of Environmental Protection); weather forecasts – Open-Meteo (CC BY 4.0)."
+                "**Data:** measurements – GIOŚ (Chief Inspectorate of Environmental Protection); weather forecasts – Open-Meteo."
               ]
             }
           },
