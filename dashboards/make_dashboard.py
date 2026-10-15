@@ -351,7 +351,7 @@ MONTH_COLS = [("month", "Month"), ("pollutant", "Pollutant"), ("smog_days", "Smo
               ("persistence_right", "\"Tomorrow like today\": warnings followed by smog")]
 # Open-Meteo's data is CC BY 4.0, so the sources are named on the page that shows the forecasts.
 SOURCES = ("**Data:** measurements – GIOŚ (Chief Inspectorate of Environmental Protection); weather forecasts – "
-           "Open-Meteo (CC BY 4.0).")
+           "Open-Meteo.")
 NOTE_RLS = ("*What you see depends on who you are: rows by voivodeship and technical columns are filtered by "
             "Unity Catalog (schema `gold_secure`).*")
 
