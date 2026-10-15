@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "smogcast-core"
-version = "0.2.0"  # x-release-please-version (must equal ../../VERSION, checked by a test)
+version = "0.2.1"  # x-release-please-version (must equal ../../VERSION, checked by a test)
 description = "smogcast shared infrastructure: config, Spark session, storage, DQ metrics"
 requires-python = ">=3.10,<3.13"
 dependencies = [

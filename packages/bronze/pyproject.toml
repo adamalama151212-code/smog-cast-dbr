@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "smogcast-bronze"
-version = "0.2.0"  # x-release-please-version (must equal ../../VERSION, checked by a test)
+version = "0.2.1"  # x-release-please-version (must equal ../../VERSION, checked by a test)
 description = "smogcast step: landing files into bronze delta tables"
 requires-python = ">=3.10,<3.13"
 dependencies = [
-    "smogcast-core==0.2.0",  # x-release-please-version
+    "smogcast-core==0.2.1",  # x-release-please-version
     # Spark cannot read xlsx; the GIOŚ archive sheets are streamed with openpyxl (read-only mode).
     "openpyxl>=3.1",
 ]
