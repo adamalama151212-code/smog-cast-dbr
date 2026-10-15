@@ -21,6 +21,9 @@ concurrency:
 
 jobs:
   test:
+    # Not on release-please's own pull request: it changes only the versions and the CHANGELOG, and every commit it
+    # collects was tested in its own pull request. (A pull_request trigger cannot filter by the head branch.)
+    if: ${{ !startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
