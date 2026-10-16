@@ -1,5 +1,8 @@
 # smogcast – will the PM10 / PM2.5 limit be exceeded tomorrow in city Y?
 
+**The app:** [ca-smogcast-app-dev.bravesmoke-11653194.polandcentral.azurecontainerapps.io](https://ca-smogcast-app-dev.bravesmoke-11653194.polandcentral.azurecontainerapps.io/)
+(the app – repository `smog-cast-app` – is, or was, hosted at this address)
+
 A data platform on Azure Databricks that answers one question every day:
 
 > **"Will the daily PM10 / PM2.5 limit be exceeded tomorrow in city Y, and how sure is that?"**
