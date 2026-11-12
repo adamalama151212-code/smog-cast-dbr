@@ -14,7 +14,7 @@ repository `smog-cast-app`); both read the gold tables.
 
 Final project of a Databricks course (requirements: [`final-project-spec.md`](final-project-spec.md)).
 State (2026-10-12): the pipeline runs on Databricks DEV on its schedule, as a service principal, and the app is
-hosted on Azure Container Apps; PROD is in progress. Architecture, decisions and criteria:
+hosted on Azure Container Apps. Architecture, decisions and criteria:
 [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ---
